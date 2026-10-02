@@ -1,0 +1,14 @@
+{
+  "name": "nineteen-j-store",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Nineteen J Store - PWA App Store (outillage de build uniquement ; aucune dépendance runtime)",
+  "scripts": {
+    "build:css": "tailwindcss -c tailwind.config.js -i src/tailwind.input.css -o public/assets/css/tailwind.css --minify",
+    "watch:css": "tailwindcss -c tailwind.config.js -i src/tailwind.input.css -o public/assets/css/tailwind.css --watch",
+    "lint": "eslint public/js --ext .js"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.17"
+  }
+}

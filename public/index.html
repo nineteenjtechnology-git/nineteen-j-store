@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Nineteen J Store - Applications Web & Mobile</title>
+<meta name="description" content="Le store d'applications de Nineteen J Apps : Apps Mobiles, jeux, outils et PWA pour Android, iOS et le Web." />
+<meta name="theme-color" content="#0c0a08" />
+<link rel="manifest" href="/manifest.json" />
+<link rel="icon" href="/assets/icons/icon-192.png" />
+<link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
+<link rel="stylesheet" href="/assets/css/styles.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/assets/css/tailwind.css" />
+<script src="/js/vendor/lucide.min.js" defer></script>
+<script src="/js/vendor/supabase.js"></script>
+</head>
+<body class="min-h-screen">
+
+<header class="sticky top-0 z-30 backdrop-blur border-b" style="background:color-mix(in srgb, var(--bg) 88%, transparent); border-color:var(--border);">
+  <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+    <a href="/" class="flex items-center gap-2 shrink-0">
+      <img src="/assets/icons/icon-192.png" alt="" class="w-9 h-9 rounded-lg" />
+      <span class="font-display font-bold text-lg hidden sm:block">Nineteen J Store</span>
+    </a>
+
+    <div class="flex-1 max-w-md relative">
+      <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]"></i>
+      <input id="search-input" type="search" placeholder="Rechercher une application…"
+             class="w-full pl-9 pr-3 py-2 text-sm rounded-lg" />
+    </div>
+
+    <button id="theme-toggle" class="btn-ghost w-9 h-9 rounded-lg flex items-center justify-center shrink-0" aria-label="Changer de thème">
+      <i data-lucide="sun-moon" class="w-4 h-4"></i>
+    </button>
+  </div>
+  <!-- Le panneau admin n'a volontairement aucun lien depuis la vitrine publique :
+       accès uniquement par URL directe (/admin/index.html), réservé à l'opérateur. -->
+</header>
+
+<main class="max-w-6xl mx-auto px-4 pb-24">
+
+  <section class="pt-8 pb-4">
+    <h1 class="font-display text-3xl sm:text-4xl font-bold">Le store d'apps de Nineteen&nbsp;J</h1>
+    <p class="text-[var(--muted)] mt-2 max-w-xl">Apps Mobiles, jeux, outils et applications conçus par Nineteen J Apps à retrouver ici, pour Android, iOS et le Web.</p>
+  </section>
+
+  <section class="mt-4">
+    <div id="featured-shelf" class="shelf flex gap-3 overflow-x-auto snap-x pb-2">
+      <!-- rempli par store.js -->
+    </div>
+  </section>
+
+  <section class="mt-8 space-y-3">
+    <div id="category-chips" class="flex gap-2 overflow-x-auto pb-1"></div>
+    <div id="platform-chips" class="flex gap-2 overflow-x-auto pb-1"></div>
+  </section>
+
+  <section class="mt-6">
+    <div id="apps-grid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    <p id="empty-state" class="hidden text-center text-[var(--muted)] py-16">Aucune application ne correspond à ta recherche.</p>
+  </section>
+
+</main>
+
+<footer class="border-t py-8 text-center text-sm text-[var(--muted)]" style="border-color:var(--border);">
+  <p>© <span id="year-now"></span> Nineteen J Apps - Nineteen j Technology™</p>
+</footer>
+
+<div id="install-banner" class="install-banner hidden fixed bottom-4 inset-x-4 sm:inset-x-auto sm:right-4 sm:w-96 surface rounded-xl p-4 shadow-2xl z-40 flex items-center gap-3">
+  <img src="/assets/icons/icon-192.png" alt="" class="w-10 h-10 rounded-lg" />
+  <div class="flex-1 text-sm">
+    <p class="font-medium">Installer le Store</p>
+    <p class="text-[var(--muted)] text-xs">Accès rapide, même hors ligne.</p>
+  </div>
+  <button id="install-btn" class="btn-primary px-3 py-1.5 rounded-lg text-sm">Installer</button>
+  <button id="install-dismiss" class="text-[var(--muted)] p-1" aria-label="Fermer"><i data-lucide="x" class="w-4 h-4"></i></button>
+</div>
+
+<script src="/js/icons-init.js" defer></script>
+<script type="module" src="/js/store.js"></script>
+</body>
+</html>

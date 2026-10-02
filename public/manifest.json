@@ -1,0 +1,22 @@
+{
+  "name": "Nineteen J Store",
+  "short_name": "19J Store",
+  "description": "Le store d'applications Web & Mobile de Nineteen J Apps : Apps mobiles, jeux, outils et PWA.",
+  "start_url": "/?source=pwa",
+  "id": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "portrait-primary",
+  "background_color": "#0c0a08",
+  "theme_color": "#0c0a08",
+  "lang": "fr",
+  "dir": "ltr",
+  "categories": ["shopping", "utilities", "productivity"],
+  "icons": [
+    { "src": "/assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/assets/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

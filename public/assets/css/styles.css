@@ -1,0 +1,137 @@
+/* Nineteen J Store - design tokens & custom components (Tailwind handles utilities) */
+:root {
+  --bg: #0c0a08;
+  --surface: #15130f;
+  --surface-2: #1c1912;
+  --border: #2a251c;
+  --text: #f4efe4;
+  --muted: #9c9484;
+  --accent: #e8952e;
+  --accent-dim: #7a5420;
+  --accent-2: #34c9a3;
+  --danger: #e2584b;
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 9px;
+}
+[data-theme="light"] {
+  --bg: #faf8f4;
+  --surface: #ffffff;
+  --surface-2: #f1ede4;
+  --border: #e6e0d3;
+  --text: #17150f;
+  --muted: #6b6357;
+  --accent-dim: #f6d9ae;
+}
+
+* { -webkit-tap-highlight-color: transparent; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+}
+.font-display { font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif; }
+
+::selection { background: var(--accent); color: #0c0a08; }
+
+.surface { background: var(--surface); border: 1px solid var(--border); }
+.surface-2 { background: var(--surface-2); }
+
+.shelf { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.shelf::-webkit-scrollbar { height: 8px; }
+.shelf::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+
+.btn-primary {
+  background: var(--accent);
+  color: #12100b;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  transition: transform .15s ease, filter .15s ease;
+}
+.btn-primary:hover { filter: brightness(1.08); }
+.btn-primary:active { transform: scale(.97); }
+.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+}
+.btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+.chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  transition: all .15s ease;
+  white-space: nowrap;
+}
+.chip[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #12100b;
+  font-weight: 600;
+}
+
+.app-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: border-color .15s ease, transform .15s ease;
+}
+.app-card:hover { border-color: var(--accent-dim); transform: translateY(-2px); }
+
+.icon-frame {
+  border-radius: 22%;
+  overflow: hidden;
+  background: var(--surface-2);
+  flex-shrink: 0;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--border) 37%, var(--surface-2) 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+@keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+
+.rating-star { color: var(--accent); }
+
+a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
+
+.install-banner { animation: slideUp .35s ease; }
+@keyframes slideUp { from { transform: translateY(16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+.toast { animation: toastIn .25s ease; }
+@keyframes toastIn { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+.progress-bar { background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.progress-bar > span { display: block; height: 100%; background: var(--accent); transition: width .2s ease; }
+
+input, textarea, select {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+}
+input::placeholder, textarea::placeholder { color: var(--muted); }
+
+.dropzone {
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-md);
+  transition: border-color .15s ease, background .15s ease;
+}
+.dropzone.drag-over { border-color: var(--accent); background: rgba(232,149,46,.06); }
+
+table.admin-table th { color: var(--muted); font-weight: 500; text-align: left; }
+table.admin-table td, table.admin-table th { border-bottom: 1px solid var(--border); }
+table.admin-table tr:hover td { background: var(--surface-2); }

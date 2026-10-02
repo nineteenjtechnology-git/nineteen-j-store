@@ -1,0 +1,67 @@
+name: Deploy Nineteen J Store
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Principe du moindre privilège : le workflow ne peut que lire le dépôt.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      # Actions épinglées par SHA de commit (audit M6) - à mettre à jour volontairement
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install (outillage de build uniquement)
+        run: npm ci
+
+      - name: Syntaxe JS (bloquant)
+        run: |
+          for f in public/js/*.js public/sw.js; do node --check "$f"; done
+
+      - name: Intégrité des scripts vendorisés (SHA-256)
+        working-directory: public
+        run: sha256sum --check js/vendor/SHA256SUMS.txt
+
+      - name: Build du CSS Tailwind
+        run: npm run build:css
+
+      - name: Audit des dépendances de build (bloquant à partir de "high")
+        run: npm audit --audit-level=high
+
+  deploy:
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production   # permet d'exiger une approbation manuelle (Settings > Environments)
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:css
+
+      # Compte de service au rôle minimal (Firebase Hosting Admin) au lieu d'un
+      # jeton personnel longue durée (`firebase login:ci`, déprécié).
+      - uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0
+        with:
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
+          channelId: live
+
+      - name: Health check
+        run: |
+          sleep 8
+          curl -sSf "${{ secrets.HOSTING_URL }}" -o /dev/null \
+            || (echo "Health check échoué - envisager un rollback (voir README)" && exit 1)

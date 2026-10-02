@@ -1,0 +1,7 @@
+tus.min.js - tus-js-client v4.3.1
+Source : https://www.npmjs.com/package/tus-js-client
+Licence MIT - Copyright (c) 2015 tus - Resumable File Uploads
+
+Vendorisé localement (au lieu d'un CDN) pour que /js/vendor/tus.min.js soit servi
+depuis le même domaine que le reste du site - évite le blocage de certains
+navigateurs (ex. "Tracking Prevention" d'Edge) sur les scripts tiers.

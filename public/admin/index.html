@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Admin - Nineteen J Store</title>
+<meta name="robots" content="noindex, nofollow" />
+<meta name="theme-color" content="#0c0a08" />
+<link rel="icon" href="/assets/icons/icon-192.png" />
+<link rel="stylesheet" href="/assets/css/styles.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/assets/css/tailwind.css" />
+<script src="/js/vendor/supabase.js"></script>
+<!-- Upload reprenable (protocole TUS) pour les gros fichiers (APK/ZIP) - recommandation
+     officielle Supabase au-delà de 6 Mo : blocs de 6 Mo + reprise automatique en cas de
+     coupure réseau. Hébergé localement (pas de CDN tiers) pour éviter les blocages des
+     fonctions "Tracking Prevention" de certains navigateurs sur les scripts cross-origin. -->
+<script src="/js/vendor/tus.min.js"></script>
+</head>
+<body class="min-h-screen">
+
+<div id="toast-wrap" class="fixed top-4 right-4 z-50 space-y-2 w-72"></div>
+
+<!-- ÉCRAN : chargement -->
+<div id="screen-loading" class="min-h-screen flex items-center justify-center hidden">
+  <p class="text-[var(--muted)]">Vérification des accès…</p>
+</div>
+
+<!-- ÉCRAN : login -->
+<div id="screen-login" class="min-h-screen flex items-center justify-center p-4 hidden">
+  <div class="surface rounded-2xl p-8 w-full max-w-sm">
+    <img src="/assets/icons/icon-192.png" alt="" class="w-12 h-12 rounded-lg mb-4" />
+    <h1 class="font-display text-xl font-bold mb-1">Panneau Admin</h1>
+    <p class="text-[var(--muted)] text-sm mb-6">Nineteen J Store</p>
+
+    <!-- Connexion Google uniquement (voir audit sécurité M5) : un point d'accès
+         unique, protégé par la validation en 2 étapes de ton compte Google,
+         plutôt qu'un mot de passe propre à ce site. -->
+    <p id="login-error" class="hidden text-sm text-[var(--danger)] mb-3"></p>
+    <button id="google-login-btn" class="btn-primary w-full py-2.5 rounded-lg text-sm">Continuer avec Google</button>
+    <a href="/" class="block text-center text-xs text-[var(--muted)] mt-6 hover:text-[var(--accent)]">← Retour au store</a>
+  </div>
+</div>
+
+<!-- ÉCRAN : accès refusé -->
+<div id="screen-denied" class="min-h-screen flex items-center justify-center p-4 hidden">
+  <div class="surface rounded-2xl p-8 w-full max-w-sm text-center">
+    <p class="font-display text-lg font-semibold mb-2">Accès non autorisé</p>
+    <p class="text-[var(--muted)] text-sm mb-6">Ce compte n'a pas le rôle administrateur sur Nineteen J Store.</p>
+    <button id="logout-btn-denied" class="btn-ghost px-4 py-2 rounded-lg text-sm">Se déconnecter</button>
+  </div>
+</div>
+
+<!-- ÉCRAN : dashboard -->
+<div id="screen-dashboard" class="hidden">
+  <header class="sticky top-0 z-30 border-b" style="background:var(--bg); border-color:var(--border);">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <img src="/assets/icons/icon-192.png" alt="" class="w-8 h-8 rounded-lg" />
+        <span class="font-display font-semibold">Admin · Nineteen J Store</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="admin-email" class="text-sm text-[var(--muted)] hidden sm:block"></span>
+        <button id="logout-btn" class="btn-ghost px-3 py-1.5 rounded-lg text-sm">Déconnexion</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-4 py-8 space-y-10">
+
+    <!-- Stats -->
+    <section class="grid grid-cols-3 gap-4">
+      <div class="surface rounded-xl p-4">
+        <p class="text-[var(--muted)] text-xs">Applications</p>
+        <p id="stat-apps" class="font-display text-2xl font-bold mt-1">-</p>
+      </div>
+      <div class="surface rounded-xl p-4">
+        <p class="text-[var(--muted)] text-xs">Téléchargements</p>
+        <p id="stat-downloads" class="font-display text-2xl font-bold mt-1">-</p>
+      </div>
+      <div class="surface rounded-xl p-4">
+        <p class="text-[var(--muted)] text-xs">Catégories</p>
+        <p id="stat-categories" class="font-display text-2xl font-bold mt-1">-</p>
+      </div>
+    </section>
+
+    <!-- Catégories -->
+    <section>
+      <h2 class="font-display text-lg font-semibold mb-3">Catégories</h2>
+      <div class="grid sm:grid-cols-2 gap-6">
+        <form id="category-form" class="surface rounded-xl p-4 space-y-3">
+          <div>
+            <label class="text-sm text-[var(--muted)] block mb-1" for="category-name">Nom</label>
+            <input id="category-name" required class="w-full px-3 py-2 text-sm" placeholder="Productivité" />
+          </div>
+          <div>
+            <label class="text-sm text-[var(--muted)] block mb-1" for="category-icon">Icône (nom Lucide, optionnel)</label>
+            <input id="category-icon" class="w-full px-3 py-2 text-sm" placeholder="briefcase" />
+          </div>
+          <button type="submit" class="btn-primary px-4 py-2 rounded-lg text-sm">Ajouter</button>
+        </form>
+        <ul id="categories-list" class="space-y-2"></ul>
+      </div>
+    </section>
+
+    <!-- Apps -->
+    <section>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-display text-lg font-semibold">Applications</h2>
+        <button id="new-app-btn" class="btn-primary px-4 py-2 rounded-lg text-sm">+ Nouvelle application</button>
+      </div>
+      <div class="surface rounded-xl overflow-x-auto">
+        <table class="admin-table w-full text-sm">
+          <thead>
+            <tr>
+              <th class="py-2 pl-4 pr-4">Application</th>
+              <th class="py-2 pr-4">Plateforme</th>
+              <th class="py-2 pr-4">Statut</th>
+              <th class="py-2 pr-4">Téléchargements</th>
+              <th class="py-2 pr-4">Mise en avant</th>
+              <th class="py-2 pr-4"></th>
+            </tr>
+          </thead>
+          <tbody id="apps-table-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Formulaire app (création/édition) -->
+    <section id="app-form-panel" class="hidden surface rounded-2xl p-6">
+      <h2 id="app-form-title" class="font-display text-lg font-semibold mb-1">Nouvelle application</h2>
+      <p id="app-form-hint" class="text-sm text-[var(--muted)] mb-4">
+        1. Enregistre les informations de base. 2. L'icône, les captures et les versions
+        apparaissent ensuite et s'enregistrent immédiatement, un par un.
+      </p>
+
+      <form id="app-base-form" class="space-y-5">
+        <div class="grid sm:grid-cols-2 gap-3">
+          <div class="sm:col-span-2">
+            <label class="text-sm text-[var(--muted)] block mb-1" for="app-title">Titre</label>
+            <input id="app-title" required class="w-full px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-sm text-[var(--muted)] block mb-1" for="app-category">Catégorie</label>
+            <select id="app-category" class="w-full px-3 py-2 text-sm"></select>
+          </div>
+          <div>
+            <label class="text-sm text-[var(--muted)] block mb-1" for="app-platform">Plateforme</label>
+            <select id="app-platform" class="w-full px-3 py-2 text-sm">
+              <option value="android">Android</option>
+              <option value="ios">iOS</option>
+              <option value="web">Web</option>
+              <option value="cross_platform">Multiplateforme</option>
+            </select>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="text-sm text-[var(--muted)] block mb-1" for="app-developer">Développeur</label>
+            <input id="app-developer" class="w-full px-3 py-2 text-sm" placeholder="Nineteen J Apps" />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="text-sm text-[var(--muted)] block mb-1" for="app-website">Site web (optionnel)</label>
+            <input id="app-website" type="url" placeholder="https://…" class="w-full px-3 py-2 text-sm" />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="text-sm text-[var(--muted)] block mb-1" for="app-status">Statut</label>
+            <select id="app-status" class="w-full px-3 py-2 text-sm">
+              <option value="draft">Brouillon (invisible du public)</option>
+              <option value="published">Publié</option>
+            </select>
+            <p class="text-xs text-[var(--muted)] mt-1">Une nouvelle application démarre en brouillon : passe-la en "Publié" une fois l'icône, les captures et au moins une version ajoutées.</p>
+          </div>
+        </div>
+
+        <div>
+          <label class="text-sm text-[var(--muted)] block mb-1" for="app-short-desc">Description courte</label>
+          <input id="app-short-desc" required maxlength="140" class="w-full px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="text-sm text-[var(--muted)] block mb-1" for="app-full-desc">Description complète</label>
+          <textarea id="app-full-desc" rows="4" class="w-full px-3 py-2 text-sm"></textarea>
+        </div>
+
+        <div class="flex items-center gap-3 pt-2">
+          <button id="app-base-submit" type="submit" class="btn-primary px-5 py-2.5 rounded-lg text-sm">Créer l'application</button>
+          <button id="app-form-cancel" type="button" class="btn-ghost px-5 py-2.5 rounded-lg text-sm">Fermer</button>
+        </div>
+      </form>
+
+      <!-- Média : visible uniquement une fois l'application créée (appId connu) -->
+      <div id="media-section" class="hidden mt-8 pt-6 space-y-8" style="border-top:1px solid var(--border)">
+
+        <div>
+          <h3 class="font-display font-semibold mb-2">Icône</h3>
+          <div class="flex items-center gap-4">
+            <img id="icon-preview" src="/assets/icons/icon-192.png" class="w-16 h-16 rounded-xl object-cover" alt="" />
+            <label class="btn-ghost px-3 py-2 rounded-lg text-sm cursor-pointer">
+              Changer l'icône
+              <input id="icon-input" type="file" accept="image/*" class="hidden" />
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="font-display font-semibold mb-2">Captures d'écran</h3>
+          <ul id="screenshots-gallery" class="flex gap-3 flex-wrap mb-3"></ul>
+          <div class="dropzone p-4 text-center">
+            <label class="text-sm text-[var(--accent)] cursor-pointer">
+              Glisser-déposer ou choisir des fichiers (envoi immédiat)
+              <input id="screenshots-input" type="file" accept="image/*" multiple class="hidden" />
+            </label>
+            <p id="screenshots-progress" class="text-xs text-[var(--muted)] mt-1"></p>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="font-display font-semibold mb-2">Versions</h3>
+          <ul id="versions-list" class="space-y-2 mb-3 text-sm"></ul>
+
+          <form id="version-form" class="surface-2 rounded-xl p-4 space-y-3">
+            <div class="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label class="text-sm text-[var(--muted)] block mb-1" for="app-version-number">Numéro de version <span class="text-[var(--danger)]">*</span></label>
+                <input id="app-version-number" required placeholder="v1.0.0" class="w-full px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label class="text-sm text-[var(--muted)] block mb-1" for="app-external-url">URL externe (PWA/Web)</label>
+                <input id="app-external-url" placeholder="https://…" class="w-full px-3 py-2 text-sm" />
+              </div>
+            </div>
+            <p class="text-xs text-[var(--muted)]">Renseigne un fichier APK/ZIP <strong>ou</strong> une URL externe (ou les deux) - sans l'un des deux, le bouton "Télécharger" restera indisponible sur la fiche publique.</p>
+            <div>
+              <label class="text-sm text-[var(--muted)] block mb-1" for="app-changelog">Changelog</label>
+              <textarea id="app-changelog" rows="2" class="w-full px-3 py-2 text-sm"></textarea>
+            </div>
+            <div class="dropzone p-4 text-center">
+              <label class="text-sm text-[var(--accent)] cursor-pointer">
+                Fichier APK / ZIP
+                <input id="binary-input" type="file" accept=".apk,.zip,.ipa" class="hidden" />
+              </label>
+              <p id="binary-name" class="text-xs text-[var(--muted)] mt-1"></p>
+              <div id="binary-progress-wrap" class="hidden mt-2">
+                <div class="progress-bar h-1.5"><span id="binary-progress-bar" style="width:0%"></span></div>
+                <p id="binary-progress-text" class="text-xs text-[var(--muted)] mt-1"></p>
+              </div>
+            </div>
+            <button id="version-submit" type="submit" class="btn-primary px-4 py-2 rounded-lg text-sm">Ajouter cette version</button>
+          </form>
+        </div>
+
+        <div>
+          <h3 class="font-display font-semibold mb-2">Avis & réponses</h3>
+          <ul id="comments-admin-list" class="space-y-3"></ul>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script type="module" src="/js/admin.js"></script>
+</body>
+</html>

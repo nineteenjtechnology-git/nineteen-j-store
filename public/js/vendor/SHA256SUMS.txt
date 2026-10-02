@@ -1,0 +1,3 @@
+5de4fffddc1b41ad1226d5e986fcc552adb8ad9efd1566e71dfdcdb664f9a6c2  js/vendor/lucide.min.js
+59d39487c3589843b410322d8a3d562ce022aba1e5ccb16898ef3fb2a0da2ecd  js/vendor/supabase.js
+8cbb1b63fccc3bba0ae73ad1deb160ce046c3750851d0c3e94921ae3ef070eb8  js/vendor/tus.min.js
