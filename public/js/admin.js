@@ -1,10 +1,10 @@
-// Nineteen J Store - Panneau Admin (100% statique, aucun backend)
+// Nineteen J Store — Panneau Admin (100% statique, aucun backend)
 // Lecture publique via `supabase`. Écritures via `supabaseAdmin` (token Firebase =
 // JWT), autorisées par RLS (private.is_admin()) uniquement pour role='admin'.
 //
 // Flux volontairement en 2 temps : 1) créer/enregistrer les infos de base de
 // l'app (obtient un appId stable) 2) chaque icône/capture/version s'enregistre
-// IMMÉDIATEMENT en base dès l'upload réussi - plus d'état en mémoire qui peut
+// IMMÉDIATEMENT en base dès l'upload réussi — plus d'état en mémoire qui peut
 // se perdre si le formulaire est fermé/rouvert avant la fin.
 import { supabase, SUPABASE_PROJECT_REF, SUPABASE_PUBLISHABLE_KEY } from './supabase-config.js';
 import { supabaseAdmin } from './supabase-admin.js';
@@ -112,6 +112,7 @@ watchAuthState(async (user) => {
     document.getElementById('admin-email').textContent = user.email || '';
     showScreen('dashboard');
     await Promise.all([loadStats(), loadCategories(), loadApps()]);
+    loadAnalytics().catch((err) => console.error('Audience :', err));
   } catch (err) {
     console.error(err);
     showScreen('denied');
@@ -130,6 +131,65 @@ async function loadStats() {
   document.getElementById('stat-categories').textContent = catCount ?? 0;
   document.getElementById('stat-downloads').textContent = totalDownloads.toLocaleString('fr-FR');
 }
+
+// ---------- Audience (téléchargements + sondage) ----------
+const SURVEY_LABELS = {
+  eleve: 'Élève', etudiant: 'Étudiant(e)', enseignant: 'Enseignant(e)', professionnel: 'Professionnel(le)', autre: 'Autre',
+  etudes: 'Études', travail: 'Travail', loisirs: 'Loisirs',
+  whatsapp: 'WhatsApp', facebook: 'Facebook', tiktok_instagram: 'TikTok / Instagram', ami: 'Un(e) ami(e)'
+};
+
+function barList(title, rows, { labels = {}, emptyText = 'Pas encore de données' } = {}) {
+  const list = rows || [];
+  const max = Math.max(1, ...list.map((r) => r.n));
+  const body = list.length
+    ? list
+        .map(
+          (r) => `
+        <div class="bar-row">
+          <span class="bar-label">${escapeHtml(labels[r.k] || r.k)}</span>
+          <span class="bar-num">${r.n}</span>
+          <span class="bar-track"><span style="width:${Math.round((r.n / max) * 100)}%"></span></span>
+        </div>`
+        )
+        .join('')
+    : `<p class="text-xs text-[var(--muted)] mt-2">${emptyText}</p>`;
+  return `<div class="surface rounded-xl p-4"><p class="font-semibold text-sm">${title}</p>${body}</div>`;
+}
+
+async function loadAnalytics() {
+  const root = document.getElementById('analytics-root');
+  const days = Number(document.getElementById('analytics-days')?.value) || 30;
+  root.textContent = 'Chargement…';
+  const { data, error } = await supabaseAdmin.rpc('admin_analytics', { days_input: days });
+  if (error) {
+    root.textContent = 'Impossible de charger les statistiques.';
+    throw error;
+  }
+  const survey = data.survey || {};
+  root.innerHTML = `
+    <div class="stat-grid" style="margin-bottom:1rem">
+      <div class="surface rounded-xl p-4"><p class="text-xs text-[var(--muted)]">Téléchargements (${data.days} j)</p><p class="font-display text-2xl font-bold mt-1">${Number(data.downloads).toLocaleString('fr-FR')}</p></div>
+      <div class="surface rounded-xl p-4"><p class="text-xs text-[var(--muted)]">Appareils distincts</p><p class="font-display text-2xl font-bold mt-1">${Number(data.devices).toLocaleString('fr-FR')}</p></div>
+      <div class="surface rounded-xl p-4"><p class="text-xs text-[var(--muted)]">Réponses au sondage (total)</p><p class="font-display text-2xl font-bold mt-1">${Number(survey.total || 0).toLocaleString('fr-FR')}</p></div>
+    </div>
+    <div class="stat-grid">
+      ${barList('D’où viennent-ils ? (source du lien)', data.by_source)}
+      ${barList('Système', data.by_os)}
+      ${barList('Navigateur', data.by_browser)}
+      ${barList('Modèle d’appareil', data.by_model, { emptyText: 'Disponible surtout sur Chrome Android' })}
+      ${barList('Langue', data.by_lang)}
+      ${barList('Connexion', data.by_network, { emptyText: 'Non communiquée par le navigateur' })}
+      ${barList('Sondage : ils sont…', survey.statut, { labels: SURVEY_LABELS })}
+      ${barList('Sondage : ils téléchargent pour…', survey.usage, { labels: SURVEY_LABELS })}
+      ${barList('Sondage : ils ont connu le store via…', survey.decouverte, { labels: SURVEY_LABELS })}
+      ${barList('Sondage : villes', survey.villes)}
+    </div>`;
+}
+
+document.getElementById('analytics-days')?.addEventListener('change', () => {
+  loadAnalytics().catch((err) => console.error('Audience :', err));
+});
 
 // ---------- Categories ----------
 let categoriesCache = [];
@@ -341,7 +401,7 @@ baseForm?.addEventListener('submit', async (e) => {
       mediaSection.classList.remove('hidden');
       loadScreenshotsGallery(editingAppId);
       loadVersionsList(editingAppId);
-      toast('Application créée - ajoute maintenant ses médias.');
+      toast('Application créée — ajoute maintenant ses médias.');
     }
     await Promise.all([loadApps(), loadStats()]);
   } catch (err) {
@@ -384,7 +444,7 @@ async function uploadBinaryResumable(file, onProgress) {
   const path = `${crypto.randomUUID()}.${ext}`;
 
   // getIdToken() peut échouer ponctuellement si le service Firebase Auth répond
-  // 503 (vu en pratique) - une tentative suffit généralement à passer.
+  // 503 (vu en pratique) — une tentative suffit généralement à passer.
   let idToken;
   try {
     idToken = await auth.currentUser.getIdToken();
@@ -398,7 +458,7 @@ async function uploadBinaryResumable(file, onProgress) {
       endpoint: `https://${SUPABASE_PROJECT_REF}.storage.supabase.co/storage/v1/upload/resumable`,
       // Plus de tentatives + délais plus longs : les erreurs réseau bas niveau
       // (ex. ERR_HTTP2_PROTOCOL_ERROR causé par un antivirus/proxy qui inspecte le
-      // HTTPS) sont souvent transitoires bloc par bloc - retenter suffit généralement.
+      // HTTPS) sont souvent transitoires bloc par bloc — retenter suffit généralement.
       retryDelays: [0, 1000, 3000, 5000, 10000, 20000, 30000],
       headers: {
         authorization: `Bearer ${idToken}`,
@@ -428,7 +488,7 @@ async function uploadBinaryResumable(file, onProgress) {
     // PAS de findPreviousUploads()/resumeFromPreviousUpload() ici : si un essai
     // précédent sur le MÊME fichier (même nom+taille+date) avait été interrompu,
     // ça reprenait l'upload stocké sous l'ANCIEN nom aléatoire (celui généré lors
-    // de la tentative précédente) tout en enregistrant ce nouveau `path` en base -
+    // de la tentative précédente) tout en enregistrant ce nouveau `path` en base —
     // lien mort garanti (vécu en pratique : fichier réel sous un nom, base sous un
     // autre). On démarre donc toujours un upload neuf ; la résilience réseau reste
     // assurée par retryDelays ci-dessus (retry interne au même upload en cours).
@@ -444,7 +504,7 @@ document.getElementById('icon-input')?.addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file || !editingAppId) return;
   if (file.size > MAX_IMAGE_SIZE) {
-    toast(`Icône trop lourde (${formatFileSize(file.size)}) - max ${formatFileSize(MAX_IMAGE_SIZE)}.`, 'error');
+    toast(`Icône trop lourde (${formatFileSize(file.size)}) — max ${formatFileSize(MAX_IMAGE_SIZE)}.`, 'error');
     e.target.value = '';
     return;
   }
@@ -492,7 +552,7 @@ document.getElementById('screenshots-input')?.addEventListener('change', async (
 
   for (const file of files) {
     if (file.size > MAX_IMAGE_SIZE) {
-      toast(`${file.name} trop lourd (${formatFileSize(file.size)}) - max ${formatFileSize(MAX_IMAGE_SIZE)}, ignoré.`, 'error');
+      toast(`${file.name} trop lourd (${formatFileSize(file.size)}) — max ${formatFileSize(MAX_IMAGE_SIZE)}, ignoré.`, 'error');
       continue;
     }
     progressEl.textContent = `Envoi de ${file.name}…`;
@@ -537,12 +597,12 @@ function renderVersionsList(versions) {
           <span class="font-medium">${escapeHtml(v.version_number)}</span>
           ${i === 0 ? '<span class="text-xs text-[var(--accent)] ml-2">actuelle</span>' : ''}
           <span class="text-[var(--muted)] ml-2">${formatDate(v.created_at)}</span>
-          ${!v.file_url && !v.external_url ? '<span class="text-xs text-[var(--danger)] ml-2">aucun fichier/URL - non téléchargeable</span>' : ''}
+          ${!v.file_url && !v.external_url ? '<span class="text-xs text-[var(--danger)] ml-2">aucun fichier/URL — non téléchargeable</span>' : ''}
         </div>
         <button class="text-[var(--danger)] text-xs hover:underline" data-delete-version="${v.id}" data-file="${v.file_url || ''}">Supprimer</button>
       </li>`
     )
-    .join('') || '<li class="text-sm text-[var(--muted)]">Aucune version publiée - l\'app n\'est pas encore téléchargeable.</li>';
+    .join('') || '<li class="text-sm text-[var(--muted)]">Aucune version publiée — l\'app n\'est pas encore téléchargeable.</li>';
 }
 
 document.getElementById('versions-list')?.addEventListener('click', async (e) => {
@@ -571,7 +631,7 @@ versionForm?.addEventListener('submit', async (e) => {
 
   if (!versionNumber) return toast('Le numéro de version est requis.', 'error');
   if (binaryFile && binaryFile.size > MAX_BINARY_SIZE) {
-    return toast(`Fichier trop lourd (${formatFileSize(binaryFile.size)}) - max ${formatFileSize(MAX_BINARY_SIZE)}.`, 'error');
+    return toast(`Fichier trop lourd (${formatFileSize(binaryFile.size)}) — max ${formatFileSize(MAX_BINARY_SIZE)}.`, 'error');
   }
 
   const submitBtn = document.getElementById('version-submit');
@@ -590,7 +650,7 @@ versionForm?.addEventListener('submit', async (e) => {
       progressText.textContent = 'Préparation…';
       const { publicUrl } = await uploadBinaryResumable(binaryFile, (pct) => {
         progressBar.style.width = `${pct}%`;
-        progressText.textContent = `${pct}% - reprise automatique en cas de coupure`;
+        progressText.textContent = `${pct}% — reprise automatique en cas de coupure`;
       });
       fileUrl = publicUrl;
       fileSize = binaryFile.size;

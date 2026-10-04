@@ -1,4 +1,4 @@
-/* Nineteen J Store - design tokens & custom components (Tailwind handles utilities) */
+/* Nineteen J Store — design tokens & custom components (Tailwind handles utilities) */
 :root {
   --bg: #0c0a08;
   --surface: #15130f;
@@ -135,3 +135,35 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 table.admin-table th { color: var(--muted); font-weight: 500; text-align: left; }
 table.admin-table td, table.admin-table th { border-bottom: 1px solid var(--border); }
 table.admin-table tr:hover td { background: var(--surface-2); }
+
+/* ---------- Sondage après téléchargement (survey.js) ---------- */
+.njs-modal-backdrop {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: flex-end; justify-content: center;
+  background: rgba(0,0,0,.6);
+}
+.njs-modal {
+  width: 100%; max-width: 28rem; max-height: 92vh; overflow-y: auto;
+  border-radius: 1.25rem 1.25rem 0 0;
+  padding: 1.25rem;
+  padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 640px) {
+  .njs-modal-backdrop { align-items: center; padding: 1rem; }
+  .njs-modal { border-radius: 1.25rem; }
+}
+.njs-q { margin-top: 1rem; }
+.njs-q-label { display: block; font-size: .875rem; font-weight: 600; margin-bottom: .5rem; }
+.njs-chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+.njs-chips .chip { padding: .4rem .8rem; font-size: .85rem; background: transparent; cursor: pointer; }
+.njs-input { width: 100%; padding: .55rem .75rem; font-size: .9rem; }
+.njs-notice { font-size: .75rem; color: var(--muted); margin-top: .6rem; line-height: 1.45; }
+.njs-actions { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1.25rem; }
+
+/* ---------- Statistiques détaillées du panneau admin ---------- */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; }
+.bar-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .15rem .6rem; align-items: center; font-size: .8rem; margin-top: .55rem; }
+.bar-row .bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-row .bar-num { color: var(--muted); font-variant-numeric: tabular-nums; }
+.bar-track { grid-column: 1 / -1; height: 5px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.bar-track > span { display: block; height: 100%; background: var(--accent); border-radius: 999px; }

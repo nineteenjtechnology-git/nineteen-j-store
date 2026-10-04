@@ -1,5 +1,6 @@
 // Nineteen J Store — vitrine publique
 import { supabase } from './supabase-config.js';
+import './tracking.js'; // retient la source du lien (?src=…) dès l'arrivée sur l'accueil
 import { initInstallBanner, registerServiceWorker } from './pwa-install.js';
 
 registerServiceWorker();
