@@ -1,4 +1,4 @@
-// Nineteen J Store — page de détail d'une application
+// Nineteen J Store - page de détail d'une application
 import { supabase } from './supabase-config.js';
 import { supabaseAuthed } from './supabase-authed.js';
 import { registerServiceWorker } from './pwa-install.js';
@@ -24,7 +24,7 @@ function escapeHtml(str = '') {
 }
 
 function formatBytes(bytes) {
-  if (!bytes) return '—';
+  if (!bytes) return '-';
   const units = ['o', 'Ko', 'Mo', 'Go'];
   let i = 0;
   let val = bytes;
@@ -66,9 +66,9 @@ async function loadApp() {
   ]);
 
   render(app, versions?.[0], versions || [], screenshots || [], comments || [], myRating.data || 0);
-  document.title = `${app.title} — Nineteen J Store`;
+  document.title = `${app.title} - Nineteen J Store`;
 
-  // L'état de connexion n'affecte que la section commentaires — on ne la
+  // L'état de connexion n'affecte que la section commentaires - on ne la
   // (re)dessine qu'elle, pour ne pas perdre le reste au moindre changement d'auth.
   onAuthStateChanged(auth, (user) => {
     currentUser = user;
@@ -85,7 +85,7 @@ function handleDownloadClick(app, current) {
   const target = current?.file_url || current?.external_url;
   if (!target) return;
 
-  // window.open() doit rester synchrone, dans le prolongement direct du clic —
+  // window.open() doit rester synchrone, dans le prolongement direct du clic -
   // un `await` avant (ex. attendre la réponse du RPC) fait perdre le geste
   // utilisateur aux yeux du navigateur, qui peut alors bloquer le popup
   // silencieusement (symptôme observé : "rien ne se passe" / compteur figé).
@@ -101,7 +101,7 @@ function handleDownloadClick(app, current) {
     window.open(target, '_blank', 'noopener');
   }
 
-  // Le comptage se fait ensuite, en arrière-plan — un éventuel échec ou une
+  // Le comptage se fait ensuite, en arrière-plan - un éventuel échec ou une
   // lenteur réseau ne doit jamais retarder ni bloquer le téléchargement lui-même.
   trackDownload(app);
 
@@ -185,7 +185,7 @@ function render(app, current, versions, screenshots, comments, myRating) {
 
     <div class="grid sm:grid-cols-4 gap-4 mt-8 surface rounded-xl p-4 text-sm">
       <div><p class="text-[var(--muted)]">Taille</p><p class="font-medium">${formatBytes(current?.file_size)}</p></div>
-      <div><p class="text-[var(--muted)]">Version</p><p class="font-medium">${escapeHtml(current?.version_number || '—')}</p></div>
+      <div><p class="text-[var(--muted)]">Version</p><p class="font-medium">${escapeHtml(current?.version_number || '-')}</p></div>
       <div><p class="text-[var(--muted)]">Plateforme</p><p class="font-medium">${PLATFORM_LABELS[app.platform] || app.platform}</p></div>
       <div><p class="text-[var(--muted)]">Mis à jour</p><p class="font-medium">${current ? formatDate(current.created_at) : formatDate(app.created_at)}</p></div>
     </div>
@@ -197,7 +197,7 @@ function render(app, current, versions, screenshots, comments, myRating) {
 
     ${current?.changelog ? `
     <div class="mt-8">
-      <h2 class="font-display text-lg font-semibold mb-2">Notes de version — ${escapeHtml(current.version_number)}</h2>
+      <h2 class="font-display text-lg font-semibold mb-2">Notes de version - ${escapeHtml(current.version_number)}</h2>
       <p class="text-[var(--muted)] leading-relaxed whitespace-pre-line">${escapeHtml(current.changelog)}</p>
     </div>` : ''}
 
@@ -205,7 +205,7 @@ function render(app, current, versions, screenshots, comments, myRating) {
     <div class="mt-8">
       <h2 class="font-display text-lg font-semibold mb-2">Historique des versions</h2>
       <ul class="space-y-2 text-sm">
-        ${versions.slice(1).map((v) => `<li class="text-[var(--muted)]"><span class="text-[var(--text)] font-medium">${escapeHtml(v.version_number)}</span> — ${formatDate(v.created_at)}</li>`).join('')}
+        ${versions.slice(1).map((v) => `<li class="text-[var(--muted)]"><span class="text-[var(--text)] font-medium">${escapeHtml(v.version_number)}</span> - ${formatDate(v.created_at)}</li>`).join('')}
       </ul>
     </div>` : ''}
 
@@ -220,7 +220,7 @@ function render(app, current, versions, screenshots, comments, myRating) {
       <h2 id="comments-heading" class="font-display text-lg font-semibold mb-3">Avis (${comments.length})</h2>
       <div id="comment-form-slot" class="mb-6"></div>
       <ul id="comments-list" class="space-y-4">
-        ${comments.map(commentItem).join('') || '<li class="text-[var(--muted)] text-sm">Aucun avis pour le moment — sois le premier à commenter.</li>'}
+        ${comments.map(commentItem).join('') || '<li class="text-[var(--muted)] text-sm">Aucun avis pour le moment - sois le premier à commenter.</li>'}
       </ul>
     </div>
   `;
@@ -308,7 +308,7 @@ async function submitRating(app, score) {
   });
 
   if (error) {
-    feedback.textContent = 'Note non enregistrée — réessaie.';
+    feedback.textContent = 'Note non enregistrée - réessaie.';
     feedback.classList.remove('hidden', 'text-[var(--accent)]');
     feedback.classList.add('text-[var(--danger)]');
     return;

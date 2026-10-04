@@ -1,4 +1,4 @@
-// Nineteen J Store — sondage général, proposé après le téléchargement de N'IMPORTE QUELLE app.
+// Nineteen J Store - sondage général, proposé après le téléchargement de N'IMPORTE QUELLE app.
 //
 // Principes :
 //  - le téléchargement a déjà démarré quand la fenêtre apparaît (jamais bloquant) ;

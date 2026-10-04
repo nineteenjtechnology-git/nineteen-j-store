@@ -1,4 +1,4 @@
-// Nineteen J Store — statistiques anonymes de téléchargement
+// Nineteen J Store - statistiques anonymes de téléchargement
 //
 // 1) SOURCE du lien : on retient ?src=... (ou ?ref=, ?utm_source=) à l'arrivée sur n'importe quelle
 //    page du store, pour ne pas la perdre quand la personne passe de l'accueil à la page d'une app.
