@@ -62,9 +62,8 @@ function starRow(rating) {
     .join('');
 }
 
-function downloadLabel(count) {
-  const n = Number(count) || 0;
-  return `${n.toLocaleString('fr-FR')} téléchargement${n > 1 ? 's' : ''}`;
+function formatDownloads(count) {
+  return new Intl.NumberFormat('fr-FR', { notation: 'compact' }).format(Number(count) || 0);
 }
 
 function appCard(app) {
@@ -78,8 +77,7 @@ function appCard(app) {
       <div class="min-w-0 flex-1">
         <h3 class="font-display font-semibold truncate group-hover:text-[var(--accent)]">${escapeHtml(app.title)}</h3>
         <p class="text-sm text-[var(--muted)] truncate">${escapeHtml(cat?.name || 'Application')} · ${PLATFORM_LABELS[app.platform] || app.platform}</p>
-        <div class="flex items-center gap-1 mt-1">${starRow(app.rating)}<span class="text-xs text-[var(--muted)] ml-1">${Number(app.rating).toFixed(1)} (${app.rating_count || 0})</span></div>
-        <p class="text-xs text-[var(--muted)] mt-0.5">${downloadLabel(app.download_count)}</p>
+        <div class="flex items-center gap-1 mt-1">${starRow(app.rating)}<span class="text-xs text-[var(--muted)] ml-1" title="${Number(app.download_count) || 0} téléchargement(s) · ${app.rating_count || 0} avis">${Number(app.rating).toFixed(1)} (${formatDownloads(app.download_count)})</span></div>
       </div>
     </a>`;
 }
