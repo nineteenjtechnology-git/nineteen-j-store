@@ -169,7 +169,7 @@ function render(app, current, versions, screenshots, comments, myRating) {
       }
     </div>
     ${downloadTarget
-      ? `<p class="text-xs text-[var(--muted)] mt-2">En téléchargeant, des statistiques anonymes (source du lien, type d’appareil, langue) sont enregistrées sur Supabase. Aucune donnée personnelle n’est demandée.</p>`
+      ? `<p class="text-xs text-[var(--muted)] mt-2">En téléchargeant, des statistiques anonymes (source du lien, type d’appareil, langue) sont enregistrées sur notre base de données. Aucune donnée personnelle n’est demandée.</p>`
       : ''}
 
     ${screenshots.length ? `
