@@ -226,7 +226,10 @@ begin
 end;
 $$;
 
-revoke all on function public.admin_analytics(integer) from public, anon;
-grant execute on function public.admin_analytics(integer) to authenticated;
+-- Les JWT Firebase (Third-Party Auth) n'ont pas de claim "role" : PostgREST les exécute en rôle anon.
+-- EXECUTE doit donc être accordé à anon ET authenticated ; le contrôle d'accès réel est dans le corps
+-- de la fonction (private.is_admin() : sub Firebase d'un profil admin). Sans JWT valide, il lève 42501.
+revoke all on function public.admin_analytics(integer) from public;
+grant execute on function public.admin_analytics(integer) to anon, authenticated;
 comment on function public.admin_analytics(integer) is
-  'Statistiques du panneau admin. Réservée aux admins (contrôle private.is_admin() dans le corps). EXECUTE à authenticated uniquement.';
+  'Statistiques du panneau admin. Réservée aux admins : contrôle private.is_admin() dans le corps. EXECUTE à anon ET authenticated, car les JWT Firebase arrivent en rôle anon (pas de claim role). Ne pas retirer.';
