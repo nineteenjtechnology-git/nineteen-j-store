@@ -114,6 +114,41 @@
       <div id="downloads-log-root" class="text-sm text-[var(--muted)]">Chargement…</div>
     </section>
 
+    <!-- Notifications push -->
+    <section id="push-section">
+      <div class="flex items-center justify-between gap-3 mb-3 flex-wrap">
+        <h2 class="font-display text-lg font-semibold">Notifications push</h2>
+        <span id="push-count" class="text-sm text-[var(--muted)]"></span>
+      </div>
+      <form id="push-form" class="surface rounded-2xl p-6 space-y-4">
+        <div>
+          <label class="text-sm text-[var(--muted)] block mb-1" for="push-title">Titre <span id="push-title-count"></span></label>
+          <input id="push-title" type="text" maxlength="65" required placeholder="ex. Nouvelle version d'Alloco Crush" class="w-full px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="text-sm text-[var(--muted)] block mb-1" for="push-body">Message <span id="push-body-count"></span></label>
+          <textarea id="push-body" rows="3" maxlength="180" required placeholder="ex. Nouveaux niveaux et corrections. Mets à jour dès maintenant !" class="w-full px-3 py-2 text-sm"></textarea>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label class="text-sm text-[var(--muted)] block mb-1" for="push-url">Page à ouvrir au clic</label>
+            <select id="push-url" class="w-full px-3 py-2 text-sm"></select>
+          </div>
+          <div>
+            <label class="text-sm text-[var(--muted)] block mb-1" for="push-audience">Destinataires</label>
+            <select id="push-audience" class="w-full px-3 py-2 text-sm"></select>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button type="submit" id="push-send" class="btn-primary px-4 py-2 rounded-lg text-sm">Envoyer</button>
+          <button type="button" id="push-test" class="btn-ghost px-4 py-2 rounded-lg text-sm">M'envoyer un test</button>
+        </div>
+        <p id="push-result" class="text-sm hidden"></p>
+        <p class="text-xs text-[var(--muted)]">Seuls les visiteurs ayant activé la cloche sur le store reçoivent les notifications. « M'envoyer un test » n'écrit qu'à ce navigateur (active d'abord la cloche sur la page d'accueil avec ce navigateur).</p>
+      </form>
+      <div id="push-history" class="mt-4 text-sm text-[var(--muted)]"></div>
+    </section>
+
     <!-- Catégories -->
     <section>
       <h2 class="font-display text-lg font-semibold mb-3">Catégories</h2>

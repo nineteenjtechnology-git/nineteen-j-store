@@ -106,3 +106,54 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(isInertAsset(url) ? staleWhileRevalidate(request) : networkFirst(request, SHELL_CACHE));
   }
 });
+
+// ---------- Notifications push ----------
+// Le lien reçu n'est suivi que s'il reste sur notre domaine.
+function safeNotificationUrl(raw) {
+  try {
+    const url = new URL(raw || '/', self.location.origin);
+    return url.origin === self.location.origin ? url.pathname + url.search + url.hash : '/';
+  } catch {
+    return '/';
+  }
+}
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data ? event.data.text() : '' };
+  }
+  const title = String(data.title || 'Nineteen J Store').slice(0, 100);
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: String(data.body || '').slice(0, 300),
+      icon: '/assets/icons/icon-192.png',
+      data: { url: safeNotificationUrl(data.url) }
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = new URL(event.notification.data?.url || '/', self.location.origin).href;
+  event.waitUntil(
+    (async () => {
+      const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const same = windows.find((c) => c.url === target && 'focus' in c);
+      if (same) return same.focus();
+      for (const c of windows) {
+        if ('navigate' in c && 'focus' in c) {
+          try {
+            await c.navigate(target);
+            return c.focus();
+          } catch {
+            /* on retombe sur openWindow */
+          }
+        }
+      }
+      return clients.openWindow(target);
+    })()
+  );
+});

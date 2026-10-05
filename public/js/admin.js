@@ -6,7 +6,7 @@
 // l'app (obtient un appId stable) 2) chaque icône/capture/version s'enregistre
 // IMMÉDIATEMENT en base dès l'upload réussi - plus d'état en mémoire qui peut
 // se perdre si le formulaire est fermé/rouvert avant la fin.
-import { supabase, SUPABASE_PROJECT_REF, SUPABASE_PUBLISHABLE_KEY } from './supabase-config.js';
+import { supabase, SUPABASE_PROJECT_REF, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
 import { supabaseAdmin } from './supabase-admin.js';
 import { auth } from './firebase-config.js';
 import { watchAuthState, loginWithGoogle, logout } from './auth.js';
@@ -115,6 +115,7 @@ watchAuthState(async (user) => {
     await Promise.all([loadStats(), loadCategories(), loadApps()]);
     loadAnalytics().catch((err) => console.error('Audience :', err));
     loadDownloadsLog().catch((err) => console.error('Journal des téléchargements :', err));
+    loadPush().catch((err) => console.error('Notifications push :', err));
   } catch (err) {
     console.error(err);
     showScreen('denied');
@@ -382,6 +383,129 @@ function exportStatsCsv() {
 document.getElementById('log-export-btn')?.addEventListener('click', exportLogCsv);
 document.getElementById('stats-export-btn')?.addEventListener('click', exportStatsCsv);
 document.getElementById('stats-reset-btn')?.addEventListener('click', resetStats);
+
+// ---------- Notifications push ----------
+let pushOverview = null;
+
+async function callSendPush(payload) {
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) throw new Error('Session expirée : reconnecte-toi.');
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_PUBLISHABLE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+  return data;
+}
+
+function renderPush() {
+  const o = pushOverview;
+  if (!o) return;
+  document.getElementById('push-count').textContent = `${o.subscribers.toLocaleString('fr-FR')} abonné(s)`;
+
+  const audience = document.getElementById('push-audience');
+  const keepAudience = audience.value;
+  audience.innerHTML =
+    `<option value="all">Tous les abonnés (${o.subscribers})</option>` +
+    o.apps
+      .map((a) => `<option value="app:${escapeHtml(a.id)}">Ont téléchargé : ${escapeHtml(a.title)} (${a.subscribers})</option>`)
+      .join('');
+  if ([...audience.options].some((opt) => opt.value === keepAudience)) audience.value = keepAudience;
+
+  const url = document.getElementById('push-url');
+  const keepUrl = url.value;
+  url.innerHTML =
+    '<option value="/">Accueil du store</option>' +
+    o.apps
+      .map((a) => `<option value="/app/detail?slug=${encodeURIComponent(a.slug)}">Page de ${escapeHtml(a.title)}</option>`)
+      .join('');
+  if ([...url.options].some((opt) => opt.value === keepUrl)) url.value = keepUrl;
+
+  const hist = document.getElementById('push-history');
+  if (!o.history.length) {
+    hist.textContent = 'Aucune notification envoyée pour le moment.';
+    return;
+  }
+  const fmt = new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  hist.innerHTML = `<p class="text-xs mb-2">Derniers envois</p><ul class="space-y-2">${o.history
+    .map(
+      (m) => `<li class="surface rounded-lg p-3">
+        <p class="font-medium text-[var(--text)]">${escapeHtml(m.title)}</p>
+        <p>${escapeHtml(m.body)}</p>
+        <p class="text-xs mt-1">${escapeHtml(fmt.format(new Date(m.created_at)))} · ${escapeHtml(m.audience)} · ${m.sent}/${m.recipients} reçu(s)${m.failed ? ` · ${m.failed} échec(s)` : ''}${m.removed ? ` · ${m.removed} expiré(s) retiré(s)` : ''}</p>
+      </li>`
+    )
+    .join('')}</ul>`;
+}
+
+async function loadPush() {
+  if (!document.getElementById('push-section')) return;
+  let { data, error } = await supabaseAdmin.rpc('admin_push_overview');
+  if (error) throw error;
+  if (!data.configured) {
+    // Premier passage : l'Edge Function génère les clés VAPID (la clé privée reste dans la base).
+    await callSendPush({ action: 'init' });
+    ({ data, error } = await supabaseAdmin.rpc('admin_push_overview'));
+    if (error) throw error;
+  }
+  pushOverview = data;
+  renderPush();
+}
+
+async function submitPush(testOnly) {
+  const title = document.getElementById('push-title').value.trim();
+  const body = document.getElementById('push-body').value.trim();
+  const url = document.getElementById('push-url').value;
+  const audienceValue = document.getElementById('push-audience').value;
+  const result = document.getElementById('push-result');
+  if (!title || !body) return toast('Titre et message requis.', 'error');
+
+  let audience = { type: 'all' };
+  let label = `${pushOverview?.subscribers ?? 0} abonné(s)`;
+  if (audienceValue.startsWith('app:')) {
+    audience = { type: 'app', app_id: audienceValue.slice(4) };
+    label = document.getElementById('push-audience').selectedOptions[0]?.textContent || 'ce groupe';
+  }
+  if (testOnly) {
+    const reg = await navigator.serviceWorker?.getRegistration('/');
+    const sub = await reg?.pushManager?.getSubscription();
+    if (!sub) return toast("Ce navigateur n'est pas abonné : active d'abord la cloche sur la page d'accueil du store.", 'error');
+    audience = { type: 'endpoint', endpoint: sub.endpoint };
+  } else if (!confirm(`Envoyer cette notification à : ${label} ?\n\n« ${title} »\n${body}\n\nUne notification envoyée ne peut pas être rappelée.`)) {
+    return;
+  }
+
+  const buttons = ['push-send', 'push-test'].map((id) => document.getElementById(id));
+  buttons.forEach((b) => (b.disabled = true));
+  result.classList.add('hidden');
+  try {
+    const r = await callSendPush({ action: 'send', title, body, url, audience });
+    result.textContent = r.recipients
+      ? `Envoyé : ${r.sent}/${r.recipients} reçu(s)${r.failed ? `, ${r.failed} échec(s)` : ''}${r.removed ? `, ${r.removed} abonnement(s) expiré(s) retiré(s)` : ''}.`
+      : 'Aucun destinataire pour cette audience.';
+    result.classList.remove('hidden');
+    toast(r.recipients ? 'Notification envoyée.' : 'Aucun destinataire.');
+    loadPush().catch((err) => console.error('Notifications push :', err));
+  } catch (err) {
+    console.error('Envoi push :', err);
+    toast(err.message || "Envoi impossible pour le moment.", 'error');
+  } finally {
+    buttons.forEach((b) => (b.disabled = false));
+  }
+}
+
+document.getElementById('push-form')?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  submitPush(false);
+});
+document.getElementById('push-test')?.addEventListener('click', () => submitPush(true));
+for (const [id, counter, max] of [['push-title', 'push-title-count', 65], ['push-body', 'push-body-count', 180]]) {
+  document.getElementById(id)?.addEventListener('input', (e) => {
+    document.getElementById(counter).textContent = `(${e.target.value.length}/${max})`;
+  });
+}
 
 // ---------- Categories ----------
 let categoriesCache = [];

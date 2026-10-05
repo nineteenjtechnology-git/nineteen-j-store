@@ -1,0 +1,172 @@
+// Nineteen J Store — envoi de notifications Web Push (gratuit, natif).
+// Déployée avec verify_jwt = false : le jeton de l'admin est un JWT *Firebase* (pas un JWT Supabase),
+// la vérification est donc faite ici, via la fonction SQL am_i_admin() (private.is_admin()).
+//
+// Actions (POST JSON) :
+//   { action: "init" }                                   -> génère les clés VAPID si absentes (admin)
+//   { action: "send", title, body, url?, audience }      -> envoie (admin)
+//     audience : { type: "all" } | { type: "app", app_id } | { type: "endpoint", endpoint } (test)
+import { createClient } from "npm:@supabase/supabase-js@2";
+import webpush from "npm:web-push@3.6.7";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+// Clé publishable (publique par nature, déjà dans le code du site) : sert uniquement à interroger am_i_admin.
+const PUBLISHABLE_KEY = "sb_publishable_qOCcrFOqNBNVwAu-cWFqYw_WQBzL5uT";
+const VAPID_SUBJECT = "mailto:wilfriedodessi@gmail.com";
+const MAX_RECIPIENTS = 5000;
+const CONCURRENCY = 25;
+
+const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+const reply = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
+
+async function isAdmin(authHeader: string | null): Promise<boolean> {
+  if (!authHeader || !/^Bearer\s+\S+$/.test(authHeader)) return false;
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/am_i_admin`, {
+    method: "POST",
+    headers: { apikey: PUBLISHABLE_KEY, Authorization: authHeader, "Content-Type": "application/json" },
+    body: "{}",
+  });
+  if (!r.ok) return false;
+  return (await r.json()) === true;
+}
+
+const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+
+async function getConfig() {
+  const { data, error } = await sb.from("push_config").select("public_key, private_key, subject").eq("id", 1).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function initKeys() {
+  const existing = await getConfig();
+  if (existing) return { created: false, public_key: existing.public_key };
+  const keys = webpush.generateVAPIDKeys();
+  const { error } = await sb
+    .from("push_config")
+    .upsert({ id: 1, public_key: keys.publicKey, private_key: keys.privateKey, subject: VAPID_SUBJECT }, { onConflict: "id", ignoreDuplicates: true });
+  if (error) throw error;
+  const cfg = await getConfig();
+  return { created: true, public_key: cfg!.public_key };
+}
+
+type Sub = { endpoint: string; p256dh: string; auth: string };
+
+async function loadSubscriptions(audience: any): Promise<Sub[]> {
+  const cols = "endpoint, p256dh, auth";
+  if (audience.type === "endpoint") {
+    const { data, error } = await sb.from("push_subscriptions").select(cols).eq("endpoint", audience.endpoint);
+    if (error) throw error;
+    return data ?? [];
+  }
+  if (audience.type === "app") {
+    const ids = new Set<string>();
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb.from("app_download_events").select("device_id").eq("app_id", audience.app_id).range(from, from + 999);
+      if (error) throw error;
+      (data ?? []).forEach((r: any) => r.device_id && ids.add(r.device_id));
+      if (!data || data.length < 1000) break;
+    }
+    const list = [...ids];
+    const out: Sub[] = [];
+    for (let i = 0; i < list.length && out.length < MAX_RECIPIENTS; i += 200) {
+      const { data, error } = await sb.from("push_subscriptions").select(cols).in("device_id", list.slice(i, i + 200)).limit(1000);
+      if (error) throw error;
+      out.push(...(data ?? []));
+    }
+    return out.slice(0, MAX_RECIPIENTS);
+  }
+  const out: Sub[] = [];
+  for (let from = 0; out.length < MAX_RECIPIENTS; from += 1000) {
+    const { data, error } = await sb.from("push_subscriptions").select(cols).order("created_at").range(from, from + 999);
+    if (error) throw error;
+    out.push(...(data ?? []));
+    if (!data || data.length < 1000) break;
+  }
+  return out.slice(0, MAX_RECIPIENTS);
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PATH = /^\/(?!\/)[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]*$/;
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  if (req.method !== "POST") return reply(405, { error: "Méthode non autorisée." });
+
+  try {
+    if (!(await isAdmin(req.headers.get("Authorization")))) return reply(403, { error: "Accès réservé aux administrateurs." });
+
+    const b = await req.json().catch(() => null);
+    if (!b || typeof b !== "object") return reply(400, { error: "Requête invalide." });
+
+    if (b.action === "init") return reply(200, await initKeys());
+    if (b.action !== "send") return reply(400, { error: "Action inconnue." });
+
+    const title = String(b.title ?? "").trim();
+    const body = String(b.body ?? "").trim();
+    const url = typeof b.url === "string" && b.url ? b.url : "/";
+    const audience = b.audience ?? { type: "all" };
+    if (!title || title.length > 65) return reply(400, { error: "Titre requis (65 caractères max)." });
+    if (!body || body.length > 180) return reply(400, { error: "Message requis (180 caractères max)." });
+    if (url.length > 300 || !PATH.test(url)) return reply(400, { error: "Lien invalide (chemin du site attendu, ex. /app/detail?slug=…)." });
+    if (!["all", "app", "endpoint"].includes(audience.type)) return reply(400, { error: "Audience invalide." });
+    if (audience.type === "app" && !UUID.test(String(audience.app_id))) return reply(400, { error: "App invalide." });
+    if (audience.type === "endpoint" && !String(audience.endpoint ?? "").startsWith("https://")) return reply(400, { error: "Abonnement invalide." });
+
+    const cfg = await getConfig();
+    if (!cfg) return reply(409, { error: "Les clés VAPID ne sont pas encore générées (ouvre la section Notifications du panneau admin)." });
+    webpush.setVapidDetails(cfg.subject, cfg.public_key, cfg.private_key);
+
+    const subs = await loadSubscriptions(audience);
+    if (!subs.length) return reply(200, { recipients: 0, sent: 0, failed: 0, removed: 0 });
+
+    const payload = JSON.stringify({ title, body, url });
+    let sent = 0, failed = 0;
+    const expired: string[] = [];
+
+    for (let i = 0; i < subs.length; i += CONCURRENCY) {
+      const chunk = subs.slice(i, i + CONCURRENCY);
+      const results = await Promise.allSettled(
+        chunk.map((s) =>
+          webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, {
+            TTL: 60 * 60 * 24,
+            urgency: "normal",
+            timeout: 10000,
+          })
+        )
+      );
+      results.forEach((r, idx) => {
+        if (r.status === "fulfilled") sent++;
+        else {
+          const code = (r.reason as any)?.statusCode;
+          if (code === 404 || code === 410) expired.push(chunk[idx].endpoint);
+          else failed++;
+        }
+      });
+    }
+
+    // Abonnements expirés / désinstallés : supprimés automatiquement.
+    for (let i = 0; i < expired.length; i += 100) {
+      await sb.from("push_subscriptions").delete().in("endpoint", expired.slice(i, i + 100));
+    }
+
+    let label = "Tous les abonnés";
+    if (audience.type === "endpoint") label = "Test (admin)";
+    if (audience.type === "app") {
+      const { data } = await sb.from("apps").select("title").eq("id", audience.app_id).maybeSingle();
+      label = `Téléchargeurs de ${data?.title ?? "une app"}`;
+    }
+    await sb.from("push_messages").insert({ title, body, url, audience: label, recipients: subs.length, sent, failed, removed: expired.length });
+
+    return reply(200, { recipients: subs.length, sent, failed, removed: expired.length });
+  } catch (err) {
+    console.error("send-push :", err);
+    return reply(500, { error: "Erreur interne pendant l'envoi." });
+  }
+});
