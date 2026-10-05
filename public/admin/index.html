@@ -114,6 +114,49 @@
       <div id="downloads-log-root" class="text-sm text-[var(--muted)]">Chargement…</div>
     </section>
 
+    <!-- Message d'accueil -->
+    <section id="announcement-section">
+      <div class="flex items-center justify-between gap-3 mb-3 flex-wrap">
+        <h2 class="font-display text-lg font-semibold">Message d'accueil</h2>
+        <span id="ann-status" class="text-sm text-[var(--muted)]"></span>
+      </div>
+      <form id="ann-form" class="surface rounded-2xl p-6 space-y-4">
+        <label class="flex items-center gap-2 text-sm cursor-pointer">
+          <input id="ann-enabled" type="checkbox" />
+          <span>Afficher ce message aux visiteurs</span>
+        </label>
+        <div>
+          <label class="text-sm text-[var(--muted)] block mb-1" for="ann-title">Titre <span id="ann-title-count"></span></label>
+          <input id="ann-title" type="text" maxlength="80" placeholder="ex. Nouveau : Alloco Crush est disponible !" class="w-full px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="text-sm text-[var(--muted)] block mb-1" for="ann-message">Message <span id="ann-message-count"></span></label>
+          <textarea id="ann-message" rows="4" maxlength="600" placeholder="Ton message…" class="w-full px-3 py-2 text-sm"></textarea>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label class="text-sm text-[var(--muted)] block mb-1" for="ann-link-label">Texte du bouton (optionnel)</label>
+            <input id="ann-link-label" type="text" maxlength="30" placeholder="ex. Découvrir" class="w-full px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-sm text-[var(--muted)] block mb-1" for="ann-link-url">Lien du bouton (optionnel)</label>
+            <input id="ann-link-url" type="text" placeholder="/app/detail?slug=… ou https://…" class="w-full px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div>
+          <label class="text-sm text-[var(--muted)] block mb-1" for="ann-mode">Fréquence d'affichage</label>
+          <select id="ann-mode" class="w-full px-3 py-2 text-sm">
+            <option value="once">Une seule fois par visiteur (réaffiché si tu modifies le message)</option>
+            <option value="always">À chaque visite (une fois par session)</option>
+          </select>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button type="submit" id="ann-save" class="btn-primary px-4 py-2 rounded-lg text-sm">Enregistrer</button>
+          <button type="button" id="ann-preview" class="btn-ghost px-4 py-2 rounded-lg text-sm">Aperçu</button>
+        </div>
+      </form>
+    </section>
+
     <!-- Notifications push -->
     <section id="push-section">
       <div class="flex items-center justify-between gap-3 mb-3 flex-wrap">

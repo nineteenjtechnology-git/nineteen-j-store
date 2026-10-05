@@ -10,6 +10,7 @@ import { supabase, SUPABASE_PROJECT_REF, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL 
 import { supabaseAdmin } from './supabase-admin.js';
 import { auth } from './firebase-config.js';
 import { watchAuthState, loginWithGoogle, logout } from './auth.js';
+import { openAnnouncement } from './announcement.js';
 
 const screens = {
   login: document.getElementById('screen-login'),
@@ -115,6 +116,7 @@ watchAuthState(async (user) => {
     await Promise.all([loadStats(), loadCategories(), loadApps()]);
     loadAnalytics().catch((err) => console.error('Audience :', err));
     loadDownloadsLog().catch((err) => console.error('Journal des téléchargements :', err));
+    loadAnnouncement().catch((err) => console.error("Message d'accueil :", err));
     loadPush().catch((err) => console.error('Notifications push :', err));
   } catch (err) {
     console.error(err);
@@ -383,6 +385,77 @@ function exportStatsCsv() {
 document.getElementById('log-export-btn')?.addEventListener('click', exportLogCsv);
 document.getElementById('stats-export-btn')?.addEventListener('click', exportStatsCsv);
 document.getElementById('stats-reset-btn')?.addEventListener('click', resetStats);
+
+// ---------- Message d'accueil ----------
+function annValues() {
+  return {
+    enabled: document.getElementById('ann-enabled').checked,
+    title: document.getElementById('ann-title').value.trim(),
+    message: document.getElementById('ann-message').value.trim(),
+    link_label: document.getElementById('ann-link-label').value.trim(),
+    link_url: document.getElementById('ann-link-url').value.trim(),
+    mode: document.getElementById('ann-mode').value
+  };
+}
+
+function renderAnnouncement(a) {
+  document.getElementById('ann-enabled').checked = !!a.enabled;
+  document.getElementById('ann-title').value = a.title || '';
+  document.getElementById('ann-message').value = a.message || '';
+  document.getElementById('ann-link-label').value = a.link_label || '';
+  document.getElementById('ann-link-url').value = a.link_url || '';
+  document.getElementById('ann-mode').value = a.mode || 'once';
+  document.getElementById('ann-title-count').textContent = `(${(a.title || '').length}/80)`;
+  document.getElementById('ann-message-count').textContent = `(${(a.message || '').length}/600)`;
+  const status = document.getElementById('ann-status');
+  status.textContent = a.enabled ? 'Affiché aux visiteurs' : 'Désactivé';
+  status.style.color = a.enabled ? 'var(--accent)' : '';
+}
+
+async function loadAnnouncement() {
+  if (!document.getElementById('announcement-section')) return;
+  const { data, error } = await supabaseAdmin.rpc('admin_get_announcement');
+  if (error) throw error;
+  if (data) renderAnnouncement(data);
+}
+
+document.getElementById('ann-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const v = annValues();
+  if (v.enabled && !v.title && !v.message) return toast('Écris un titre ou un message avant d\u2019activer.', 'error');
+  const btn = document.getElementById('ann-save');
+  btn.disabled = true;
+  try {
+    const { data, error } = await supabaseAdmin.rpc('admin_set_announcement', {
+      enabled_input: v.enabled,
+      title_input: v.title,
+      message_input: v.message,
+      link_label_input: v.link_label,
+      link_url_input: v.link_url,
+      mode_input: v.mode
+    });
+    if (error) throw error;
+    renderAnnouncement(data);
+    toast(data.enabled ? 'Message enregistré et affiché aux visiteurs.' : 'Message enregistré (désactivé).');
+  } catch (err) {
+    console.error("Message d'accueil :", err);
+    toast(err.message || 'Enregistrement impossible.', 'error');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('ann-preview')?.addEventListener('click', () => {
+  const v = annValues();
+  if (!v.title && !v.message) return toast('Rien à prévisualiser.', 'error');
+  openAnnouncement(v, { preview: true });
+});
+
+for (const [id, counter, max] of [['ann-title', 'ann-title-count', 80], ['ann-message', 'ann-message-count', 600]]) {
+  document.getElementById(id)?.addEventListener('input', (e) => {
+    document.getElementById(counter).textContent = `(${e.target.value.length}/${max})`;
+  });
+}
 
 // ---------- Notifications push ----------
 let pushOverview = null;

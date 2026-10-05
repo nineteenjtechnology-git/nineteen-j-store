@@ -3,10 +3,12 @@ import { supabase } from './supabase-config.js';
 import './tracking.js'; // retient la source du lien (?src=…) dès l'arrivée sur l'accueil
 import { initInstallBanner, registerServiceWorker } from './pwa-install.js';
 import { initPushButton } from './push.js';
+import { showAnnouncementIfAny } from './announcement.js';
 
 registerServiceWorker();
 initInstallBanner();
 initPushButton();
+showAnnouncementIfAny();
 
 const state = {
   categories: [],

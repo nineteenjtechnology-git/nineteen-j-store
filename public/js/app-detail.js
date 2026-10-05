@@ -5,11 +5,13 @@ import { registerServiceWorker } from './pwa-install.js';
 import { getDeviceId } from './device-id.js';
 import { installState, markInstalled, safeOpenUrl } from './installs.js';
 import { pushSupported, getPushState, subscribePush } from './push.js';
+import { showAnnouncementIfAny } from './announcement.js';
 import { getSource, getClientMeta } from './tracking.js';
 import { maybeAskSurvey } from './survey.js';
 import { auth, googleProvider, onAuthStateChanged, signInWithPopup, signOut } from './firebase-config.js';
 
 registerServiceWorker();
+showAnnouncementIfAny();
 
 const PLATFORM_LABELS = { android: 'Android', ios: 'iOS', web: 'Web', cross_platform: 'Multiplateforme' };
 const params = new URLSearchParams(location.search);
