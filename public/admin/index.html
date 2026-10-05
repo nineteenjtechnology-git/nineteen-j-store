@@ -90,11 +90,15 @@
     <section>
       <div class="flex items-center justify-between gap-3 mb-3">
         <h2 class="font-display text-lg font-semibold">Audience</h2>
-        <select id="analytics-days" class="px-3 py-1.5 text-sm" aria-label="Période">
-          <option value="7">7 derniers jours</option>
-          <option value="30" selected>30 derniers jours</option>
-          <option value="90">90 derniers jours</option>
-        </select>
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <select id="analytics-days" class="px-3 py-1.5 text-sm" aria-label="Période">
+            <option value="7">7 derniers jours</option>
+            <option value="30" selected>30 derniers jours</option>
+            <option value="90">90 derniers jours</option>
+          </select>
+          <button type="button" id="stats-export-btn" class="btn-ghost px-3 py-1.5 rounded-lg text-sm">Exporter les stats (CSV)</button>
+          <button type="button" id="stats-reset-btn" class="btn-ghost px-3 py-1.5 rounded-lg text-sm text-[var(--danger)]">Réinitialiser les stats</button>
+        </div>
       </div>
       <div id="analytics-root" class="text-sm text-[var(--muted)]">Chargement…</div>
       <p class="text-xs text-[var(--muted)] mt-3">
@@ -103,7 +107,10 @@
         <code>…/app/detail?slug=mon-app&amp;src=campus-ufhb</code>.
       </p>
 
-      <h3 class="font-display text-base font-semibold mt-6 mb-2">Derniers téléchargements</h3>
+      <div class="flex items-center justify-between gap-3 mt-6 mb-2">
+        <h3 class="font-display text-base font-semibold">Derniers téléchargements</h3>
+        <button type="button" id="log-export-btn" class="btn-ghost px-3 py-1.5 rounded-lg text-sm">Exporter le journal (CSV)</button>
+      </div>
       <div id="downloads-log-root" class="text-sm text-[var(--muted)]">Chargement…</div>
     </section>
 

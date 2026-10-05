@@ -159,6 +159,8 @@ function barList(title, rows, { labels = {}, emptyText = 'Pas encore de données
   return `<div class="surface rounded-xl p-4"><p class="font-semibold text-sm">${title}</p>${body}</div>`;
 }
 
+let lastAnalytics = null;
+
 async function loadAnalytics() {
   const root = document.getElementById('analytics-root');
   const days = Number(document.getElementById('analytics-days')?.value) || 30;
@@ -168,6 +170,7 @@ async function loadAnalytics() {
     root.textContent = 'Impossible de charger les statistiques.';
     throw error;
   }
+  lastAnalytics = data;
   const survey = data.survey || {};
   root.innerHTML = `
     <div class="stat-grid" style="margin-bottom:1rem">
@@ -208,7 +211,7 @@ function renderDownloadsLog() {
   const dateFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
   const timeFmt = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const body = logRows
-    .map((r) => {
+    .map((r, i) => {
       // Anciennes lignes : l'heure réelle n'a pas été enregistrée, seul le jour est fiable.
       const day = r.legacy ? new Date(`${r.day}T12:00:00`) : new Date(r.at);
       const device = [r.model, r.os ? `${r.os}${r.os_version ? ' ' + r.os_version : ''}` : null].filter(Boolean).join(' · ');
@@ -218,7 +221,8 @@ function renderDownloadsLog() {
         <td class="py-2 pr-3">${escapeHtml(r.app)}</td>
         <td class="py-2 pr-3">${escapeHtml(device || '-')}</td>
         <td class="py-2 pr-3">${escapeHtml(r.source || '-')}</td>
-        <td class="py-2 text-[var(--muted)]" title="Identifiant anonyme d'appareil (début)">${escapeHtml(r.device || '')}</td>
+        <td class="py-2 pr-3 text-[var(--muted)]" title="Identifiant anonyme d'appareil (début)">${escapeHtml(r.device || '')}</td>
+        <td class="py-2 text-right"><button type="button" class="log-del-btn text-xs underline text-[var(--danger)]" data-i="${i}" aria-label="Supprimer ce téléchargement">Supprimer</button></td>
       </tr>`;
     })
     .join('');
@@ -227,13 +231,16 @@ function renderDownloadsLog() {
       <table class="w-full text-left text-sm">
         <thead class="text-xs text-[var(--muted)]"><tr>
           <th class="pb-2 pr-3 font-medium">Date</th><th class="pb-2 pr-3 font-medium">Heure</th><th class="pb-2 pr-3 font-medium">App</th>
-          <th class="pb-2 pr-3 font-medium">Appareil</th><th class="pb-2 pr-3 font-medium">Source</th><th class="pb-2 font-medium">ID</th>
+          <th class="pb-2 pr-3 font-medium">Appareil</th><th class="pb-2 pr-3 font-medium">Source</th><th class="pb-2 pr-3 font-medium">ID</th><th class="pb-2"></th>
         </tr></thead>
         <tbody>${body}</tbody>
       </table>
       <p class="text-xs text-[var(--muted)] mt-3">${logRows.length} sur ${logTotal.toLocaleString('fr-FR')} · heures affichées dans le fuseau de ton appareil</p>
       ${logRows.length < logTotal ? '<button type="button" id="downloads-log-more" class="btn-ghost px-4 py-2 rounded-lg text-sm mt-2">Voir plus</button>' : ''}
     </div>`;
+  root.querySelectorAll('.log-del-btn').forEach((btn) => {
+    btn.addEventListener('click', () => deleteDownloadRow(Number(btn.dataset.i)));
+  });
   document.getElementById('downloads-log-more')?.addEventListener('click', () => {
     loadDownloadsLog({ more: true }).catch((err) => console.error('Journal des téléchargements :', err));
   });
@@ -258,6 +265,123 @@ async function loadDownloadsLog({ more = false } = {}) {
   logRows = logRows.concat(data?.rows || []);
   renderDownloadsLog();
 }
+
+// ---------- Suppression + exports CSV ----------
+async function deleteDownloadRow(i) {
+  const r = logRows[i];
+  if (!r) return;
+  const quand = r.legacy ? r.day : new Date(r.at).toLocaleString('fr-FR');
+  if (!confirm(`Supprimer ce téléchargement (${r.app}, ${quand}) ?\n\nIl disparaît aussi des statistiques. Le compteur public de l'app ne change pas. Action définitive.`)) return;
+  const { error } = await supabaseAdmin.rpc('admin_delete_download', {
+    app_id_input: r.app_id,
+    device_id_input: r.device_id,
+    day_input: r.day
+  });
+  if (error) return toast(error.message || 'Suppression impossible.', 'error');
+  logRows.splice(i, 1);
+  logTotal = Math.max(0, logTotal - 1);
+  renderDownloadsLog();
+  toast('Téléchargement supprimé.');
+  loadAnalytics().catch((err) => console.error('Audience :', err));
+}
+
+async function resetStats() {
+  if (!confirm("Réinitialiser les statistiques ?\n\nCela efface TOUT le journal des téléchargements et TOUTES les réponses au sondage. Les compteurs publics des apps ne changent pas. Action définitive : pense à exporter en CSV avant.")) return;
+  const typed = prompt('Pour confirmer, tape SUPPRIMER en majuscules :');
+  if (typed !== 'SUPPRIMER') return toast('Réinitialisation annulée.');
+  const { data, error } = await supabaseAdmin.rpc('admin_reset_stats');
+  if (error) return toast(error.message || 'Réinitialisation impossible.', 'error');
+  toast(`Statistiques réinitialisées (${data?.downloads ?? 0} téléchargements, ${data?.survey ?? 0} réponses au sondage effacés).`);
+  loadAnalytics().catch((err) => console.error('Audience :', err));
+  loadDownloadsLog().catch((err) => console.error('Journal des téléchargements :', err));
+}
+
+// CSV compatible Excel français : séparateur « ; », BOM UTF-8, protection contre l'injection de formules.
+function csvCell(v) {
+  if (v === null || v === undefined) return '';
+  let t = String(v);
+  if (/^[=+\-@\t\r]/.test(t) && !/^-?\d+([.,]\d+)?$/.test(t)) t = `'${t}`;
+  return /[";\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+}
+
+function downloadCsv(filename, rows) {
+  const text = '\uFEFF' + rows.map((row) => row.map(csvCell).join(';')).join('\r\n');
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function stamp() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function exportLogCsv() {
+  const btn = document.getElementById('log-export-btn');
+  btn.disabled = true;
+  const label = btn.textContent;
+  try {
+    const all = [];
+    let total = Infinity;
+    while (all.length < total) {
+      btn.textContent = `Export… ${all.length}`;
+      const { data, error } = await supabaseAdmin.rpc('admin_recent_downloads', { limit_input: 100, offset_input: all.length });
+      if (error) throw error;
+      total = Number(data?.total || 0);
+      const rows = data?.rows || [];
+      if (!rows.length) break;
+      all.push(...rows);
+    }
+    const out = [['Date', 'Heure', 'App', 'Modèle', 'Système', 'Version système', 'Navigateur', 'Source', 'ID appareil (début)']];
+    for (const r of all) {
+      const d = r.legacy ? new Date(`${r.day}T12:00:00`) : new Date(r.at);
+      out.push([
+        d.toLocaleDateString('fr-FR'),
+        r.legacy ? 'non enregistrée' : new Date(r.at).toLocaleTimeString('fr-FR'),
+        r.app, r.model, r.os, r.os_version, r.browser, r.source, r.device
+      ]);
+    }
+    downloadCsv(`telechargements-${stamp()}.csv`, out);
+    toast(`${all.length} téléchargement(s) exporté(s).`);
+  } catch (err) {
+    console.error('Export du journal :', err);
+    toast("Export impossible pour le moment.", 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+function exportStatsCsv() {
+  const d = lastAnalytics;
+  if (!d) return toast('Statistiques pas encore chargées.', 'error');
+  const sv = d.survey || {};
+  const out = [['Section', 'Valeur', 'Nombre']];
+  const add = (section, rows, labels = {}) => (rows || []).forEach((r) => out.push([section, labels[r.k] || r.k, r.n]));
+  out.push([`Téléchargements (${d.days} derniers jours)`, '', d.downloads]);
+  out.push(['Appareils distincts', '', d.devices]);
+  out.push(['Réponses au sondage (total)', '', sv.total || 0]);
+  add('Source du lien', d.by_source);
+  add('Système', d.by_os);
+  add('Navigateur', d.by_browser);
+  add('Modèle d\u2019appareil', d.by_model);
+  add('Langue', d.by_lang);
+  add('Connexion', d.by_network);
+  add('Sondage : statut', sv.statut, SURVEY_LABELS);
+  add('Sondage : usage', sv.usage, SURVEY_LABELS);
+  add('Sondage : découverte', sv.decouverte, SURVEY_LABELS);
+  add('Sondage : villes', sv.villes);
+  downloadCsv(`stats-${d.days}j-${stamp()}.csv`, out);
+  toast('Statistiques exportées.');
+}
+
+document.getElementById('log-export-btn')?.addEventListener('click', exportLogCsv);
+document.getElementById('stats-export-btn')?.addEventListener('click', exportStatsCsv);
+document.getElementById('stats-reset-btn')?.addEventListener('click', resetStats);
 
 // ---------- Categories ----------
 let categoriesCache = [];
