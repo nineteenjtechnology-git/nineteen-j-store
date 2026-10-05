@@ -104,8 +104,7 @@ function buildModal() {
       <h2 id="njs-survey-title" class="font-display" style="font-size:1.15rem;font-weight:700">Une minute pour nous aider ?</h2>
       <p style="margin-top:.35rem;font-size:.9rem;color:var(--muted)">Ton téléchargement a démarré. Ces questions sont facultatives.</p>
       <p class="njs-notice">
-        Tes réponses sont anonymes : nous ne te demandons ni nom ni e-mail. Elles sont enregistrées sur
-        Supabase, la base de données du store, et servent à mieux connaître son public.
+        Tes réponses sont anonymes : nous ne te demandons ni nom ni e-mail. Elles sont enregistrées sur la base de données du store, et servent à mieux connaître son public.
       </p>
       ${questionsHtml}
       <div class="njs-q">
