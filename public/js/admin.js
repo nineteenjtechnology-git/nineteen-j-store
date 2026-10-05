@@ -1127,14 +1127,14 @@ function renderCommentsAdmin(comments) {
         <p class="text-sm text-[var(--muted)] mb-2">${escapeHtml(c.body)}</p>
         ${c.admin_reply
           ? `<div class="border-l-2 pl-3 mb-2" style="border-color:var(--accent)">
-               <p class="text-xs text-[var(--accent)] font-medium mb-0.5">Ta réponse</p>
+               <p class="text-xs text-[var(--accent)] font-medium mb-0.5">Ta réponse <span class="text-[var(--muted)] font-normal">(affichée publiquement comme « Développeur »)</span></p>
                <p class="text-sm">${escapeHtml(c.admin_reply)}</p>
              </div>`
           : ''}
         <details class="text-sm">
           <summary class="text-[var(--accent)] cursor-pointer">${c.admin_reply ? 'Modifier la réponse' : 'Répondre'}</summary>
           <form class="reply-form mt-2 flex gap-2" data-app-comment-id="${c.id}">
-            <input class="reply-input flex-1 px-2 py-1.5 text-sm" maxlength="1000" placeholder="Ta réponse…" value="${escapeHtml(c.admin_reply || '')}" />
+            <input class="reply-input flex-1 px-2 py-1.5 text-sm" maxlength="1000" placeholder="Ta réponse (publiée sous « Développeur »)…" value="${escapeHtml(c.admin_reply || '')}" />
             <button type="submit" class="btn-primary px-3 py-1.5 rounded-lg text-xs shrink-0">Envoyer</button>
           </form>
         </details>

@@ -497,7 +497,7 @@ function commentItem(c) {
     <p class="text-sm text-[var(--muted)] whitespace-pre-line">${escapeHtml(c.body)}</p>
     ${c.admin_reply ? `
     <div class="mt-3 pl-3 border-l-2" style="border-color:var(--accent)">
-      <p class="text-xs text-[var(--accent)] font-medium mb-0.5">Réponse de Nineteen J Games</p>
+      <p class="text-xs text-[var(--accent)] font-medium mb-0.5">Réponse du développeur</p>
       <p class="text-sm whitespace-pre-line">${escapeHtml(c.admin_reply)}</p>
     </div>` : ''}
   </li>`;
