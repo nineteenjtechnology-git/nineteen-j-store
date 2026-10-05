@@ -4,6 +4,7 @@ import { supabaseAuthed } from './supabase-authed.js';
 import { registerServiceWorker } from './pwa-install.js';
 import { getDeviceId } from './device-id.js';
 import { installState, markInstalled, safeOpenUrl } from './installs.js';
+import { pushSupported, getPushState, subscribePush } from './push.js';
 import { getSource, getClientMeta } from './tracking.js';
 import { maybeAskSurvey } from './survey.js';
 import { auth, googleProvider, onAuthStateChanged, signInWithPopup, signOut } from './firebase-config.js';
@@ -105,6 +106,7 @@ function handleDownloadClick(app, current) {
     // Les apps à fichier (APK…) : on retient la version téléchargée sur cet appareil.
     markInstalled(app.id, current);
     renderAction(app, current);
+    offerPush(app);
   } else {
     window.open(target, '_blank', 'noopener');
   }
@@ -116,6 +118,67 @@ function handleDownloadClick(app, current) {
     // Sondage général (facultatif), proposé après le premier téléchargement seulement.
     maybeAskSurvey(app);
   }
+}
+
+// ---------- Proposer les notifications juste après un téléchargement ----------
+// Meilleur moment : l'utilisateur vient de montrer son intérêt. La permission du navigateur n'est demandée
+// que s'il clique sur « Activer ». S'il refuse, on ne redemande pas avant 30 jours.
+const PUSH_OFFER_KEY = 'njs-push-offer-until';
+
+async function offerPush(app) {
+  const box = document.getElementById('push-offer');
+  if (!box || !pushSupported()) return;
+  try {
+    if (Number(localStorage.getItem(PUSH_OFFER_KEY)) > Date.now()) return;
+  } catch {
+    /* stockage indisponible : on propose quand même */
+  }
+  if ((await getPushState()) !== 'idle') return; // déjà abonné, bloqué ou non supporté
+
+  box.innerHTML = `
+    <p class="text-sm font-semibold">Être prévenu des mises à jour ?</p>
+    <p class="text-sm text-[var(--muted)] mt-1">Reçois une notification quand une nouvelle version de ${escapeHtml(app.title)} est disponible, et seulement pour les nouveautés utiles.</p>
+    <div class="flex flex-wrap gap-2 mt-3">
+      <button type="button" id="push-offer-yes" class="btn-primary px-3 py-2 rounded-lg text-sm">Activer les notifications</button>
+      <button type="button" id="push-offer-no" class="btn-ghost px-3 py-2 rounded-lg text-sm">Plus tard</button>
+    </div>
+    <p id="push-offer-msg" class="text-xs text-[var(--accent)] mt-2 hidden"></p>`;
+  box.classList.remove('hidden');
+
+  const msg = document.getElementById('push-offer-msg');
+  const close = (days) => {
+    try {
+      localStorage.setItem(PUSH_OFFER_KEY, String(Date.now() + days * 86400000));
+    } catch {
+      /* ignoré */
+    }
+    box.classList.add('hidden');
+  };
+  const say = (text) => {
+    msg.textContent = text;
+    msg.classList.remove('hidden');
+  };
+
+  document.getElementById('push-offer-no')?.addEventListener('click', () => close(30));
+  document.getElementById('push-offer-yes')?.addEventListener('click', async (e) => {
+    e.currentTarget.disabled = true;
+    try {
+      const result = await subscribePush();
+      if (result === 'subscribed') {
+        say('Notifications activées ✓');
+        setTimeout(() => box.classList.add('hidden'), 2000);
+      } else {
+        say('Notifications non activées. Tu peux le faire plus tard avec la cloche de la page d’accueil.');
+        close(30);
+      }
+    } catch (err) {
+      console.error('Notifications :', err);
+      say(err?.message === 'push-not-configured'
+        ? 'Les notifications ne sont pas encore disponibles. Réessaie bientôt.'
+        : 'Impossible d’activer les notifications pour le moment.');
+      e.currentTarget.disabled = false;
+    }
+  });
 }
 
 // Ouvre l'app déjà installée via son lien d'ouverture (ex. allococrush://open).
@@ -310,6 +373,7 @@ function render(app, current, versions, screenshots, comments, myRating) {
       </div>
       <p id="share-feedback" class="text-xs text-[var(--accent)] mt-2 hidden"></p>
     </div>
+    <div id="push-offer" class="surface rounded-xl p-4 mt-3 hidden" role="region" aria-label="Notifications de mises à jour"></div>
     ${downloadTarget
       ? `<p class="text-xs text-[var(--muted)] mt-2">En téléchargeant, des statistiques anonymes (source du lien, type d’appareil, langue) sont enregistrées sur notre base de données. Aucune donnée personnelle n’est demandée.</p>`
       : ''}
