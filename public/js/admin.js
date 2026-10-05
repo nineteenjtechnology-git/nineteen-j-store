@@ -429,15 +429,42 @@ function renderPush() {
     return;
   }
   const fmt = new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-  hist.innerHTML = `<p class="text-xs mb-2">Derniers envois</p><ul class="space-y-2">${o.history
+  hist.innerHTML = `<div class="flex items-center justify-between gap-3 mb-2">
+      <p class="text-xs">Derniers envois</p>
+      <button type="button" id="push-clear-all" class="text-xs underline text-[var(--danger)]">Tout effacer</button>
+    </div><ul class="space-y-2">${o.history
     .map(
       (m) => `<li class="surface rounded-lg p-3">
-        <p class="font-medium text-[var(--text)]">${escapeHtml(m.title)}</p>
+        <div class="flex items-start justify-between gap-3">
+          <p class="font-medium text-[var(--text)]">${escapeHtml(m.title)}</p>
+          <button type="button" class="push-del-btn text-xs underline text-[var(--danger)] shrink-0" data-id="${escapeHtml(m.id)}" aria-label="Effacer cet envoi">Effacer</button>
+        </div>
         <p>${escapeHtml(m.body)}</p>
         <p class="text-xs mt-1">${escapeHtml(fmt.format(new Date(m.created_at)))} · ${escapeHtml(m.audience)} · ${m.sent}/${m.recipients} reçu(s)${m.failed ? ` · ${m.failed} échec(s)` : ''}${m.removed ? ` · ${m.removed} expiré(s) retiré(s)` : ''}</p>
       </li>`
     )
     .join('')}</ul>`;
+
+  hist.querySelectorAll('.push-del-btn').forEach((btn) => {
+    btn.addEventListener('click', () => deletePushMessage(btn.dataset.id));
+  });
+  document.getElementById('push-clear-all')?.addEventListener('click', clearPushHistory);
+}
+
+async function deletePushMessage(id) {
+  if (!confirm("Effacer cet envoi de l'historique ?\n\nLes notifications déjà reçues par les utilisateurs ne sont pas rappelées.")) return;
+  const { error } = await supabaseAdmin.rpc('admin_delete_push_message', { message_id: id });
+  if (error) return toast(error.message || 'Suppression impossible.', 'error');
+  toast('Envoi effacé de l\u2019historique.');
+  loadPush().catch((err) => console.error('Notifications push :', err));
+}
+
+async function clearPushHistory() {
+  if (!confirm("Effacer TOUT l'historique des notifications envoyées ?\n\nLes notifications déjà reçues par les utilisateurs ne sont pas rappelées. Action définitive.")) return;
+  const { data, error } = await supabaseAdmin.rpc('admin_clear_push_history');
+  if (error) return toast(error.message || 'Suppression impossible.', 'error');
+  toast(`${data ?? 0} envoi(s) effacé(s) de l\u2019historique.`);
+  loadPush().catch((err) => console.error('Notifications push :', err));
 }
 
 async function loadPush() {
