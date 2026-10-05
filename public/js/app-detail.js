@@ -210,6 +210,59 @@ async function trackDownload(app) {
   }
 }
 
+// ---------- Partage ----------
+// Lien propre vers la page de l'app ; ?src=partage permet de voir dans l'admin combien de personnes
+// arrivent via un partage (source du lien).
+function shareUrl(app) {
+  return `${location.origin}/app/detail?slug=${encodeURIComponent(app.slug)}&src=partage`;
+}
+
+function setupShare(app) {
+  const url = shareUrl(app);
+  const text = `Découvre « ${app.title} » sur Nineteen J Store : ${app.short_description || ''}`.trim();
+  const panel = document.getElementById('share-panel');
+  const feedback = document.getElementById('share-feedback');
+
+  const say = (msg) => {
+    if (!feedback) return;
+    feedback.textContent = msg;
+    feedback.classList.remove('hidden');
+    setTimeout(() => feedback.classList.add('hidden'), 2500);
+  };
+
+  document.getElementById('share-link').value = url;
+  document.getElementById('share-whatsapp').href = `https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`;
+  document.getElementById('share-facebook').href = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`;
+  document.getElementById('share-telegram').href = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
+
+  document.getElementById('share-copy')?.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      say('Lien copié !');
+    } catch {
+      // Navigateurs sans accès au presse-papiers : on sélectionne le lien pour copie manuelle.
+      const input = document.getElementById('share-link');
+      input.focus();
+      input.select();
+      say(document.execCommand?.('copy') ? 'Lien copié !' : 'Lien sélectionné : copie-le avec ton clavier.');
+    }
+  });
+
+  document.getElementById('share-btn')?.addEventListener('click', async () => {
+    // Mobile : feuille de partage native (WhatsApp, Messages, etc.).
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: app.title, text, url });
+        return;
+      } catch (err) {
+        if (err?.name === 'AbortError') return; // l'utilisateur a fermé la feuille
+      }
+    }
+    // Ordinateur / navigateur sans partage natif : panneau avec copie + réseaux.
+    panel?.classList.toggle('hidden');
+  });
+}
+
 function starIcons(value, { interactive = false } = {}) {
   return Array.from({ length: 5 })
     .map((_, i) => {
@@ -240,8 +293,22 @@ function render(app, current, versions, screenshots, comments, myRating) {
           <span>${starIcons(app.rating)}</span>
           <span id="rating-summary" class="text-sm text-[var(--muted)]">${Number(app.rating).toFixed(1)} (${app.rating_count || 0} avis) · <span id="download-count-text">${app.download_count} téléchargement${app.download_count > 1 ? 's' : ''}</span></span>
         </div>
+        <button type="button" id="share-btn" class="btn-ghost px-3 py-2 rounded-lg text-sm mt-3">Partager</button>
       </div>
       <div id="action-slot"></div>
+    </div>
+    <div id="share-panel" class="surface rounded-xl p-4 mt-3 hidden">
+      <p class="text-sm font-semibold mb-2">Partager cette app</p>
+      <div class="flex gap-2">
+        <input id="share-link" type="text" readonly class="flex-1 min-w-0 px-3 py-2 text-sm" aria-label="Lien de l'app" />
+        <button type="button" id="share-copy" class="btn-primary px-3 py-2 rounded-lg text-sm">Copier</button>
+      </div>
+      <div class="flex flex-wrap gap-2 mt-3">
+        <a id="share-whatsapp" target="_blank" rel="noopener noreferrer" class="btn-ghost px-3 py-2 rounded-lg text-sm">WhatsApp</a>
+        <a id="share-facebook" target="_blank" rel="noopener noreferrer" class="btn-ghost px-3 py-2 rounded-lg text-sm">Facebook</a>
+        <a id="share-telegram" target="_blank" rel="noopener noreferrer" class="btn-ghost px-3 py-2 rounded-lg text-sm">Telegram</a>
+      </div>
+      <p id="share-feedback" class="text-xs text-[var(--accent)] mt-2 hidden"></p>
     </div>
     ${downloadTarget
       ? `<p class="text-xs text-[var(--muted)] mt-2">En téléchargeant, des statistiques anonymes (source du lien, type d’appareil, langue) sont enregistrées sur notre base de données. Aucune donnée personnelle n’est demandée.</p>`
@@ -301,6 +368,7 @@ function render(app, current, versions, screenshots, comments, myRating) {
   `;
 
   renderAction(app, current);
+  setupShare(app);
 
   root.querySelectorAll('.screenshot-trigger').forEach((btn) => {
     btn.addEventListener('click', () => openLightbox(btn.dataset.src));
