@@ -182,6 +182,11 @@
             <input id="app-website" type="url" placeholder="https://…" class="w-full px-3 py-2 text-sm" />
           </div>
           <div class="sm:col-span-2">
+            <label class="text-sm text-[var(--muted)] block mb-1" for="app-open-url">Lien d'ouverture de l'app (optionnel)</label>
+            <input id="app-open-url" type="text" inputmode="url" placeholder="ex. allococrush://open" class="w-full px-3 py-2 text-sm" />
+            <p class="text-xs text-[var(--muted)] mt-1">Sert au bouton « Ouvrir l'app » après un téléchargement. L'app doit déclarer ce lien (intent-filter Android avec la catégorie BROWSABLE). Laisse vide si elle ne le fait pas.</p>
+          </div>
+          <div class="sm:col-span-2">
             <label class="text-sm text-[var(--muted)] block mb-1" for="app-status">Statut</label>
             <select id="app-status" class="w-full px-3 py-2 text-sm">
               <option value="draft">Brouillon (invisible du public)</option>

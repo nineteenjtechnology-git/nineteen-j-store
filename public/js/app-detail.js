@@ -3,6 +3,7 @@ import { supabase } from './supabase-config.js';
 import { supabaseAuthed } from './supabase-authed.js';
 import { registerServiceWorker } from './pwa-install.js';
 import { getDeviceId } from './device-id.js';
+import { installState, markInstalled, safeOpenUrl } from './installs.js';
 import { getSource, getClientMeta } from './tracking.js';
 import { maybeAskSurvey } from './survey.js';
 import { auth, googleProvider, onAuthStateChanged, signInWithPopup, signOut } from './firebase-config.js';
@@ -85,6 +86,9 @@ function handleDownloadClick(app, current) {
   const target = current?.file_url || current?.external_url;
   if (!target) return;
 
+  // Première fois sur cet appareil ? (sert à ne pas recompter les re-téléchargements / mises à jour)
+  const firstTime = installState(app.id, current).state === 'none';
+
   // window.open() doit rester synchrone, dans le prolongement direct du clic -
   // un `await` avant (ex. attendre la réponse du RPC) fait perdre le geste
   // utilisateur aux yeux du navigateur, qui peut alors bloquer le popup
@@ -97,16 +101,91 @@ function handleDownloadClick(app, current) {
     const url = new URL(current.file_url);
     url.searchParams.set('download', filename);
     window.open(url.toString(), '_blank', 'noopener');
+
+    // Les apps à fichier (APK…) : on retient la version téléchargée sur cet appareil.
+    markInstalled(app.id, current);
+    renderAction(app, current);
   } else {
     window.open(target, '_blank', 'noopener');
   }
 
   // Le comptage se fait ensuite, en arrière-plan - un éventuel échec ou une
   // lenteur réseau ne doit jamais retarder ni bloquer le téléchargement lui-même.
-  trackDownload(app);
+  if (firstTime) {
+    trackDownload(app);
+    // Sondage général (facultatif), proposé après le premier téléchargement seulement.
+    maybeAskSurvey(app);
+  }
+}
 
-  // Sondage général (facultatif), proposé après le démarrage du téléchargement.
-  maybeAskSurvey(app);
+// Ouvre l'app déjà installée via son lien d'ouverture (ex. allococrush://open).
+// Un site web ne peut pas savoir si l'app est réellement installée : on tente l'ouverture, et si la page
+// reste au premier plan (rien ne s'est ouvert), on le dit et on propose de retélécharger.
+function openInstalledApp(app, current) {
+  const link = safeOpenUrl(app.open_url);
+  const feedback = document.getElementById('open-feedback');
+  if (!link) return;
+  if (feedback) feedback.classList.add('hidden');
+
+  let left = false;
+  const onVisibility = () => {
+    if (document.hidden) left = true;
+  };
+  const onPageHide = () => {
+    left = true;
+  };
+  document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('pagehide', onPageHide);
+
+  window.location.href = link;
+
+  setTimeout(() => {
+    document.removeEventListener('visibilitychange', onVisibility);
+    window.removeEventListener('pagehide', onPageHide);
+    if (left || !feedback) return;
+    feedback.innerHTML = `L\u2019app ne s\u2019est pas ouverte : elle n\u2019est peut-être plus installée, ou c\u2019est une ancienne version qui ne s\u2019ouvre pas depuis le site. <button type="button" id="redownload-btn" class="underline text-[var(--accent)]">Télécharger à nouveau</button>`;
+    feedback.classList.remove('hidden');
+    document.getElementById('redownload-btn')?.addEventListener('click', () => handleDownloadClick(app, current));
+  }, 1800);
+}
+
+// Zone du bouton principal : Télécharger / Ouvrir l'app / Mettre à jour, selon ce qui est déjà sur l'appareil.
+function actionHtml(app, current) {
+  const target = current?.file_url || current?.external_url;
+  if (!target) {
+    return `<button class="btn-ghost px-6 py-3 rounded-lg w-full sm:w-auto opacity-60 cursor-not-allowed" disabled title="Aucune version publiée pour le moment">Bientôt disponible</button>`;
+  }
+  // Web app (lien externe, pas de fichier) : on ouvre simplement le lien.
+  if (!current.file_url) {
+    return `<button id="download-btn" class="btn-primary px-6 py-3 rounded-lg w-full sm:w-auto">Ouvrir l\u2019app</button>`;
+  }
+  const { state, inst } = installState(app.id, current);
+  const canOpen = !!safeOpenUrl(app.open_url);
+  if (state === 'outdated') {
+    return `<div class="w-full sm:w-auto">
+      <button id="download-btn" class="btn-primary px-6 py-3 rounded-lg w-full sm:w-auto">Mettre à jour (${escapeHtml(current.version_number)})</button>
+      <p class="text-xs text-[var(--muted)] mt-1">Version téléchargée : ${escapeHtml(inst?.version_number || '?')}</p>
+    </div>`;
+  }
+  if (state === 'current') {
+    return `<div class="w-full sm:w-auto">
+      ${canOpen
+        ? `<button id="open-btn" class="btn-primary px-6 py-3 rounded-lg w-full sm:w-auto">Ouvrir l\u2019app</button>`
+        : `<p class="px-6 py-3 rounded-lg border border-[var(--border)] text-center">\u2713 Déjà téléchargée (${escapeHtml(inst?.version_number || current.version_number)})</p>`}
+      <p class="text-xs text-[var(--muted)] mt-1">À jour. <button type="button" id="redownload-link" class="underline">Télécharger à nouveau</button></p>
+      <p id="open-feedback" class="text-xs text-[var(--danger)] mt-1 hidden"></p>
+    </div>`;
+  }
+  return `<button id="download-btn" class="btn-primary px-6 py-3 rounded-lg w-full sm:w-auto">Télécharger</button>`;
+}
+
+function renderAction(app, current) {
+  const slot = document.getElementById('action-slot');
+  if (!slot) return;
+  slot.innerHTML = actionHtml(app, current);
+  document.getElementById('download-btn')?.addEventListener('click', () => handleDownloadClick(app, current));
+  document.getElementById('redownload-link')?.addEventListener('click', () => handleDownloadClick(app, current));
+  document.getElementById('open-btn')?.addEventListener('click', () => openInstalledApp(app, current));
 }
 
 async function trackDownload(app) {
@@ -145,7 +224,6 @@ function starIcons(value, { interactive = false } = {}) {
 function render(app, current, versions, screenshots, comments, myRating) {
   const icon = app.icon_url || '/assets/icons/icon-512.png';
   const downloadTarget = current?.file_url || current?.external_url;
-  const actionLabel = current?.external_url && !current?.file_url ? 'Ouvrir l\u2019app' : 'Télécharger';
 
   root.innerHTML = `
     <div class="flex flex-col sm:flex-row gap-6 items-start sm:items-center">
@@ -163,10 +241,7 @@ function render(app, current, versions, screenshots, comments, myRating) {
           <span id="rating-summary" class="text-sm text-[var(--muted)]">${Number(app.rating).toFixed(1)} (${app.rating_count || 0} avis) · <span id="download-count-text">${app.download_count} téléchargement${app.download_count > 1 ? 's' : ''}</span></span>
         </div>
       </div>
-      ${downloadTarget
-        ? `<button id="download-btn" class="btn-primary px-6 py-3 rounded-lg w-full sm:w-auto">${actionLabel}</button>`
-        : `<button class="btn-ghost px-6 py-3 rounded-lg w-full sm:w-auto opacity-60 cursor-not-allowed" disabled title="Aucune version publiée pour le moment">Bientôt disponible</button>`
-      }
+      <div id="action-slot"></div>
     </div>
     ${downloadTarget
       ? `<p class="text-xs text-[var(--muted)] mt-2">En téléchargeant, des statistiques anonymes (source du lien, type d’appareil, langue) sont enregistrées sur notre base de données. Aucune donnée personnelle n’est demandée.</p>`
@@ -225,7 +300,7 @@ function render(app, current, versions, screenshots, comments, myRating) {
     </div>
   `;
 
-  document.getElementById('download-btn')?.addEventListener('click', () => handleDownloadClick(app, current));
+  renderAction(app, current);
 
   root.querySelectorAll('.screenshot-trigger').forEach((btn) => {
     btn.addEventListener('click', () => openLightbox(btn.dataset.src));
@@ -255,7 +330,8 @@ function renderCommentForm() {
       try {
         await signInWithPopup(auth, googleProvider);
       } catch (err) {
-        alert('Connexion impossible pour le moment.');
+        console.error('Connexion Google :', err?.code, err);
+        alert('Connexion impossible pour le moment' + (err?.code ? ` (${err.code})` : '') + '.');
       }
     });
     return;

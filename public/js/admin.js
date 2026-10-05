@@ -70,8 +70,9 @@ document.getElementById('google-login-btn')?.addEventListener('click', async () 
   try {
     await loginWithGoogle();
   } catch (err) {
+    console.error('Connexion Google :', err?.code, err);
     if (errEl) {
-      errEl.textContent = 'Connexion impossible pour le moment.';
+      errEl.textContent = 'Connexion impossible pour le moment' + (err?.code ? ` (${err.code})` : '') + '.';
       errEl.classList.remove('hidden');
     }
   }
@@ -347,6 +348,7 @@ function openAppForm(app) {
     document.getElementById('app-platform').value = app.platform;
     document.getElementById('app-developer').value = app.developer_name;
     document.getElementById('app-website').value = app.website_url || '';
+    document.getElementById('app-open-url').value = app.open_url || '';
     document.getElementById('app-status').value = app.status || 'draft';
     document.getElementById('app-base-submit').textContent = 'Enregistrer les modifications';
     mediaSection.classList.remove('hidden');
@@ -382,6 +384,7 @@ baseForm?.addEventListener('submit', async (e) => {
     platform: document.getElementById('app-platform').value,
     developer_name: document.getElementById('app-developer').value.trim() || 'Nineteen J Games',
     website_url: document.getElementById('app-website').value.trim() || null,
+    open_url: document.getElementById('app-open-url').value.trim() || null,
     status: document.getElementById('app-status').value
   };
 
