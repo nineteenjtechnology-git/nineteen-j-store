@@ -114,6 +114,7 @@ watchAuthState(async (user) => {
     showScreen('dashboard');
     await Promise.all([loadStats(), loadCategories(), loadApps()]);
     loadAnalytics().catch((err) => console.error('Audience :', err));
+    loadDownloadsLog().catch((err) => console.error('Journal des téléchargements :', err));
   } catch (err) {
     console.error(err);
     showScreen('denied');
@@ -191,6 +192,72 @@ async function loadAnalytics() {
 document.getElementById('analytics-days')?.addEventListener('change', () => {
   loadAnalytics().catch((err) => console.error('Audience :', err));
 });
+
+// ---------- Journal des téléchargements (date + heure) ----------
+const LOG_PAGE = 25;
+let logRows = [];
+let logTotal = 0;
+
+function renderDownloadsLog() {
+  const root = document.getElementById('downloads-log-root');
+  if (!root) return;
+  if (!logRows.length) {
+    root.textContent = 'Aucun téléchargement enregistré pour le moment.';
+    return;
+  }
+  const dateFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+  const timeFmt = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const body = logRows
+    .map((r) => {
+      // Anciennes lignes : l'heure réelle n'a pas été enregistrée, seul le jour est fiable.
+      const day = r.legacy ? new Date(`${r.day}T12:00:00`) : new Date(r.at);
+      const device = [r.model, r.os ? `${r.os}${r.os_version ? ' ' + r.os_version : ''}` : null].filter(Boolean).join(' · ');
+      return `<tr>
+        <td class="py-2 pr-3 whitespace-nowrap">${escapeHtml(dateFmt.format(day))}</td>
+        <td class="py-2 pr-3 whitespace-nowrap">${r.legacy ? '<span class="text-[var(--muted)]">heure non enregistrée</span>' : escapeHtml(timeFmt.format(new Date(r.at)))}</td>
+        <td class="py-2 pr-3">${escapeHtml(r.app)}</td>
+        <td class="py-2 pr-3">${escapeHtml(device || '-')}</td>
+        <td class="py-2 pr-3">${escapeHtml(r.source || '-')}</td>
+        <td class="py-2 text-[var(--muted)]" title="Identifiant anonyme d'appareil (début)">${escapeHtml(r.device || '')}</td>
+      </tr>`;
+    })
+    .join('');
+  root.innerHTML = `
+    <div class="surface rounded-xl p-4 overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="text-xs text-[var(--muted)]"><tr>
+          <th class="pb-2 pr-3 font-medium">Date</th><th class="pb-2 pr-3 font-medium">Heure</th><th class="pb-2 pr-3 font-medium">App</th>
+          <th class="pb-2 pr-3 font-medium">Appareil</th><th class="pb-2 pr-3 font-medium">Source</th><th class="pb-2 font-medium">ID</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+      <p class="text-xs text-[var(--muted)] mt-3">${logRows.length} sur ${logTotal.toLocaleString('fr-FR')} · heures affichées dans le fuseau de ton appareil</p>
+      ${logRows.length < logTotal ? '<button type="button" id="downloads-log-more" class="btn-ghost px-4 py-2 rounded-lg text-sm mt-2">Voir plus</button>' : ''}
+    </div>`;
+  document.getElementById('downloads-log-more')?.addEventListener('click', () => {
+    loadDownloadsLog({ more: true }).catch((err) => console.error('Journal des téléchargements :', err));
+  });
+}
+
+async function loadDownloadsLog({ more = false } = {}) {
+  const root = document.getElementById('downloads-log-root');
+  if (!root) return;
+  if (!more) {
+    logRows = [];
+    root.textContent = 'Chargement…';
+  }
+  const { data, error } = await supabaseAdmin.rpc('admin_recent_downloads', {
+    limit_input: LOG_PAGE,
+    offset_input: logRows.length
+  });
+  if (error) {
+    if (!more) root.textContent = 'Impossible de charger le journal des téléchargements.';
+    throw error;
+  }
+  logTotal = Number(data?.total || 0);
+  logRows = logRows.concat(data?.rows || []);
+  renderDownloadsLog();
+}
 
 // ---------- Categories ----------
 let categoriesCache = [];
