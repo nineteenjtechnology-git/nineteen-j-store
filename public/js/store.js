@@ -4,11 +4,16 @@ import './tracking.js'; // retient la source du lien (?src=…) dès l'arrivée 
 import { initInstallBanner, registerServiceWorker } from './pwa-install.js';
 import { initPushButton } from './push.js';
 import { showAnnouncementIfAny } from './announcement.js';
+import { checkMaintenance } from './maintenance.js';
 
 registerServiceWorker();
-initInstallBanner();
-initPushButton();
-showAnnouncementIfAny();
+// Mode maintenance : si actif, la page de maintenance remplace tout le site et rien d'autre n'est chargé.
+const inMaintenance = await checkMaintenance();
+if (!inMaintenance) {
+  initInstallBanner();
+  initPushButton();
+  showAnnouncementIfAny();
+}
 
 const state = {
   categories: [],
@@ -203,12 +208,12 @@ themeToggle?.addEventListener('click', () => {
   }
 });
 
-loadData();
+if (!inMaintenance) loadData();
 
 // Si la page est restaurée depuis le bfcache du navigateur (bouton "retour"),
 // le JS ne se réexécute pas : les compteurs affichés (téléchargements, notes)
 // peuvent rester figés à leur valeur d'avant la navigation. On force un rechargement
 // des données dans ce cas précis.
 window.addEventListener('pageshow', (e) => {
-  if (e.persisted) loadData();
+  if (e.persisted && !inMaintenance) loadData();
 });

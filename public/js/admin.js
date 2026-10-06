@@ -11,6 +11,7 @@ import { supabaseAdmin } from './supabase-admin.js';
 import { auth } from './firebase-config.js';
 import { watchAuthState, loginWithGoogle, logout } from './auth.js';
 import { openAnnouncement } from './announcement.js';
+import { showMaintenancePage } from './maintenance.js';
 
 const screens = {
   login: document.getElementById('screen-login'),
@@ -116,6 +117,7 @@ watchAuthState(async (user) => {
     await Promise.all([loadStats(), loadCategories(), loadApps()]);
     loadAnalytics().catch((err) => console.error('Audience :', err));
     loadDownloadsLog().catch((err) => console.error('Journal des téléchargements :', err));
+    loadMaintenance().catch((err) => console.error('Maintenance :', err));
     loadAnnouncement().catch((err) => console.error("Message d'accueil :", err));
     loadPush().catch((err) => console.error('Notifications push :', err));
   } catch (err) {
@@ -386,6 +388,73 @@ document.getElementById('log-export-btn')?.addEventListener('click', exportLogCs
 document.getElementById('stats-export-btn')?.addEventListener('click', exportStatsCsv);
 document.getElementById('stats-reset-btn')?.addEventListener('click', resetStats);
 
+// ---------- Mode maintenance ----------
+function maintValues() {
+  const endsRaw = document.getElementById('maint-ends').value;
+  const ends = endsRaw ? new Date(endsRaw) : null;
+  return {
+    enabled: document.getElementById('maint-enabled').checked,
+    title: document.getElementById('maint-title').value.trim(),
+    message: document.getElementById('maint-message').value.trim(),
+    ends_at: ends && !Number.isNaN(ends.getTime()) ? ends.toISOString() : null
+  };
+}
+
+function renderMaintenance(m) {
+  document.getElementById('maint-enabled').checked = !!m.enabled;
+  document.getElementById('maint-title').value = m.title && m.title !== 'Maintenance en cours' ? m.title : '';
+  document.getElementById('maint-message').value = m.message || '';
+  document.getElementById('maint-ends').value = m.ends_at ? toLocalInputValue(new Date(m.ends_at)) : '';
+  document.getElementById('maint-title-count').textContent = `(${document.getElementById('maint-title').value.length}/80)`;
+  document.getElementById('maint-message-count').textContent = `(${(m.message || '').length}/400)`;
+  const status = document.getElementById('maint-status');
+  status.textContent = m.enabled ? 'MAINTENANCE ACTIVE : le site public est inaccessible' : 'Désactivée : le site est accessible';
+  status.style.color = m.enabled ? 'var(--danger)' : '';
+  status.style.fontWeight = m.enabled ? '600' : '';
+}
+
+async function loadMaintenance() {
+  if (!document.getElementById('maintenance-section')) return;
+  const { data, error } = await supabaseAdmin.rpc('admin_get_maintenance');
+  if (error) throw error;
+  if (data) renderMaintenance(data);
+}
+
+document.getElementById('maint-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const v = maintValues();
+  if (v.enabled && !confirm('Activer la maintenance ?\n\nLe site public (accueil et pages des apps) devient inaccessible immédiatement pour tous les visiteurs. Ce panneau admin reste accessible.')) return;
+  const btn = document.getElementById('maint-save');
+  btn.disabled = true;
+  try {
+    const { data, error } = await supabaseAdmin.rpc('admin_set_maintenance', {
+      enabled_input: v.enabled,
+      title_input: v.title,
+      message_input: v.message,
+      ends_at_input: v.ends_at
+    });
+    if (error) throw error;
+    renderMaintenance(data);
+    toast(data.enabled ? 'Maintenance ACTIVÉE : le site public est inaccessible.' : 'Maintenance désactivée : le site est de nouveau accessible.');
+  } catch (err) {
+    console.error('Maintenance :', err);
+    toast(err.message || 'Enregistrement impossible.', 'error');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('maint-preview')?.addEventListener('click', () => {
+  const v = maintValues();
+  showMaintenancePage({ title: v.title || 'Maintenance en cours', message: v.message, ends_at: v.ends_at }, { preview: true });
+});
+
+for (const [id, counter, max] of [['maint-title', 'maint-title-count', 80], ['maint-message', 'maint-message-count', 400]]) {
+  document.getElementById(id)?.addEventListener('input', (e) => {
+    document.getElementById(counter).textContent = `(${e.target.value.length}/${max})`;
+  });
+}
+
 // ---------- Message d'accueil ----------
 function annValues() {
   return {
@@ -552,6 +621,7 @@ async function loadPush() {
   }
   pushOverview = data;
   renderPush();
+  loadScheduled().catch((err) => console.error('Envois programmés :', err));
 }
 
 async function submitPush(testOnly) {
@@ -606,6 +676,141 @@ for (const [id, counter, max] of [['push-title', 'push-title-count', 65], ['push
     document.getElementById(counter).textContent = `(${e.target.value.length}/${max})`;
   });
 }
+
+// ---------- Notifications programmées ----------
+const SCHEDULE_STATUS = {
+  pending: 'En attente',
+  sending: 'Envoi en cours…',
+  sent: 'Envoyé',
+  cancelled: 'Annulé',
+  failed: 'Échec',
+  missed: 'Manqué (trop en retard)'
+};
+
+const REPEAT_LABEL = { daily: 'tous les jours', weekly: 'toutes les semaines', monthly: 'tous les mois' };
+
+function toLocalInputValue(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function renderScheduled(list) {
+  const root = document.getElementById('push-scheduled');
+  if (!root) return;
+  if (!list.length) {
+    root.textContent = 'Aucun envoi programmé.';
+    return;
+  }
+  const fmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  root.innerHTML = `<p class="text-xs mb-2">Envois programmés</p><ul class="space-y-2">${list
+    .map((m) => {
+      const who = m.audience_type === 'app' ? `Ont téléchargé : ${m.app_title || 'une app'}` : 'Tous les abonnés';
+      const res = m.status === 'sent' && m.result && m.result.recipients !== undefined ? ` · ${m.result.sent}/${m.result.recipients} reçu(s)` : '';
+      const repeats = m.repeat_every && m.repeat_every !== 'none';
+      const repeatInfo = repeats
+        ? ` · ↻ ${REPEAT_LABEL[m.repeat_every]}${m.repeat_until ? `, jusqu'au ${new Date(m.repeat_until).toLocaleDateString('fr-FR')}` : ''}${m.run_count ? ` · ${m.run_count} envoi(s) déjà fait(s)` : ''}`
+        : '';
+      const action = m.status === 'pending'
+        ? `<button type="button" class="sched-cancel text-xs underline text-[var(--danger)] shrink-0" data-id="${escapeHtml(m.id)}">${repeats ? 'Arrêter la série' : 'Annuler'}</button>`
+        : m.status === 'sending'
+          ? ''
+          : `<button type="button" class="sched-delete text-xs underline text-[var(--danger)] shrink-0" data-id="${escapeHtml(m.id)}">Effacer</button>`;
+      return `<li class="surface rounded-lg p-3">
+        <div class="flex items-start justify-between gap-3">
+          <p class="font-medium text-[var(--text)]">${escapeHtml(m.title)}</p>${action}
+        </div>
+        <p>${escapeHtml(m.body)}</p>
+        <p class="text-xs mt-1">${m.pending && repeats ? 'Prochain envoi : ' : ''}${escapeHtml(fmt.format(new Date(m.send_at)))} · ${escapeHtml(who)} · <span ${m.pending ? 'style="color:var(--accent)"' : ''}>${escapeHtml(SCHEDULE_STATUS[m.status] || m.status)}</span>${escapeHtml(res)}${escapeHtml(repeatInfo)}</p>
+      </li>`;
+    })
+    .join('')}</ul>`;
+  root.querySelectorAll('.sched-cancel').forEach((b) => b.addEventListener('click', () => cancelScheduled(b.dataset.id)));
+  root.querySelectorAll('.sched-delete').forEach((b) => b.addEventListener('click', () => deleteScheduled(b.dataset.id)));
+}
+
+async function loadScheduled() {
+  if (!document.getElementById('push-scheduled')) return;
+  const { data, error } = await supabaseAdmin.rpc('admin_list_scheduled_push');
+  if (error) throw error;
+  renderScheduled(data || []);
+}
+
+async function submitSchedule() {
+  const title = document.getElementById('push-title').value.trim();
+  const body = document.getElementById('push-body').value.trim();
+  const url = document.getElementById('push-url').value;
+  const audienceValue = document.getElementById('push-audience').value;
+  const whenValue = document.getElementById('push-when').value;
+  if (!title || !body) return toast('Titre et message requis.', 'error');
+  if (!whenValue) return toast("Choisis la date et l'heure d'envoi.", 'error');
+  const when = new Date(whenValue); // lu dans le fuseau de l'appareil
+  if (Number.isNaN(when.getTime()) || when.getTime() < Date.now() + 30000) return toast('Choisis une date et une heure dans le futur.', 'error');
+
+  const isApp = audienceValue.startsWith('app:');
+  const label = isApp ? document.getElementById('push-audience').selectedOptions[0]?.textContent : 'tous les abonnés';
+  const repeat = document.getElementById('push-repeat').value;
+  const untilValue = document.getElementById('push-until').value;
+  let untilIso = null;
+  if (repeat !== 'none' && untilValue) {
+    const until = new Date(`${untilValue}T23:59`);
+    if (Number.isNaN(until.getTime()) || until <= when) return toast('La date de fin doit être après le premier envoi.', 'error');
+    untilIso = until.toISOString();
+  }
+  const repeatText = repeat === 'none' ? '' : `\nRépété ${REPEAT_LABEL[repeat]}${untilValue ? ` jusqu'au ${new Date(`${untilValue}T12:00`).toLocaleDateString('fr-FR')}` : ' sans date de fin'}`;
+  if (!confirm(`Programmer cette notification pour le ${when.toLocaleString('fr-FR')} ?${repeatText}\n\nDestinataires : ${label}\n« ${title} »\n${body}`)) return;
+
+  const btn = document.getElementById('push-schedule');
+  btn.disabled = true;
+  try {
+    const { error } = await supabaseAdmin.rpc('admin_schedule_push', {
+      title_input: title,
+      body_input: body,
+      url_input: url,
+      audience_type_input: isApp ? 'app' : 'all',
+      app_id_input: isApp ? audienceValue.slice(4) : null,
+      send_at_input: when.toISOString(),
+      repeat_input: repeat,
+      repeat_until_input: untilIso
+    });
+    if (error) throw error;
+    toast('Notification programmée.');
+    document.getElementById('push-when').value = '';
+    document.getElementById('push-repeat').value = 'none';
+    document.getElementById('push-until').value = '';
+    document.getElementById('push-until-wrap').classList.add('hidden');
+    await loadScheduled();
+  } catch (err) {
+    console.error('Programmation push :', err);
+    toast(err.message || 'Programmation impossible.', 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function cancelScheduled(id) {
+  if (!confirm('Annuler cet envoi programmé ? Si c\u2019est une série répétée, elle s\u2019arrête définitivement.')) return;
+  const { data, error } = await supabaseAdmin.rpc('admin_cancel_scheduled_push', { scheduled_id: id });
+  if (error) return toast(error.message || 'Annulation impossible.', 'error');
+  toast(data ? 'Envoi annulé.' : "Trop tard : l'envoi est déjà parti ou en cours.", data ? undefined : 'error');
+  loadScheduled().catch((err) => console.error('Envois programmés :', err));
+}
+
+async function deleteScheduled(id) {
+  const { error } = await supabaseAdmin.rpc('admin_delete_scheduled_push', { scheduled_id: id });
+  if (error) return toast(error.message || 'Suppression impossible.', 'error');
+  loadScheduled().catch((err) => console.error('Envois programmés :', err));
+}
+
+document.getElementById('push-schedule')?.addEventListener('click', submitSchedule);
+document.getElementById('push-repeat')?.addEventListener('change', (e) => {
+  document.getElementById('push-until-wrap').classList.toggle('hidden', e.target.value === 'none');
+});
+const pushWhen = document.getElementById('push-when');
+if (pushWhen) pushWhen.min = toLocalInputValue(new Date());
+// Le statut change tout seul (en attente -> envoyé) : on rafraîchit la liste toutes les minutes.
+setInterval(() => {
+  if (!document.hidden) loadScheduled().catch(() => {});
+}, 60000);
 
 // ---------- Categories ----------
 let categoriesCache = [];

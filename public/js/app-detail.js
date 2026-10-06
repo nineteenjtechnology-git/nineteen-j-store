@@ -4,14 +4,17 @@ import { supabaseAuthed } from './supabase-authed.js';
 import { registerServiceWorker } from './pwa-install.js';
 import { getDeviceId } from './device-id.js';
 import { installState, markInstalled, safeOpenUrl } from './installs.js';
-import { pushSupported, getPushState, subscribePush } from './push.js';
+import { pushSupported, getPushState, subscribePush, describePushError } from './push.js';
 import { showAnnouncementIfAny } from './announcement.js';
+import { checkMaintenance } from './maintenance.js';
 import { getSource, getClientMeta } from './tracking.js';
 import { maybeAskSurvey } from './survey.js';
 import { auth, googleProvider, onAuthStateChanged, signInWithPopup, signOut } from './firebase-config.js';
 
 registerServiceWorker();
-showAnnouncementIfAny();
+// Mode maintenance : si actif, la page de maintenance remplace tout le site et rien d'autre n'est chargé.
+const inMaintenance = await checkMaintenance();
+if (!inMaintenance) showAnnouncementIfAny();
 
 const PLATFORM_LABELS = { android: 'Android', ios: 'iOS', web: 'Web', cross_platform: 'Multiplateforme' };
 const params = new URLSearchParams(location.search);
@@ -175,9 +178,7 @@ async function offerPush(app) {
       }
     } catch (err) {
       console.error('Notifications :', err);
-      say(err?.message === 'push-not-configured'
-        ? 'Les notifications ne sont pas encore disponibles. Réessaie bientôt.'
-        : 'Impossible d’activer les notifications pour le moment.');
+      say(describePushError(err));
       e.currentTarget.disabled = false;
     }
   });
@@ -575,9 +576,9 @@ function openLightbox(src) {
   document.body.appendChild(overlay);
 }
 
-loadApp();
+if (!inMaintenance) loadApp();
 
 // Même logique que store.js : rafraîchir si la page vient du bfcache.
 window.addEventListener('pageshow', (e) => {
-  if (e.persisted) loadApp();
+  if (e.persisted && !inMaintenance) loadApp();
 });
