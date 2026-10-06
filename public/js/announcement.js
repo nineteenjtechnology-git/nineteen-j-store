@@ -22,7 +22,8 @@ export function openAnnouncement(data, { preview = false } = {}) {
   overlay.setAttribute('aria-modal', 'true');
   overlay.setAttribute('aria-labelledby', 'njs-announcement-title');
   Object.assign(overlay.style, {
-    position: 'fixed', inset: '0', zIndex: '70', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', boxSizing: 'border-box',
+    zIndex: '70', display: 'flex', alignItems: 'center', justifyContent: 'center',
     padding: '16px', background: 'rgba(0,0,0,.6)'
   });
 

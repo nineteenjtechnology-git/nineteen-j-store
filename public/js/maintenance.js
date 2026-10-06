@@ -13,7 +13,9 @@ export function showMaintenancePage(data, { preview = false } = {}) {
   overlay.id = 'njs-maintenance';
   overlay.setAttribute('role', 'main');
   Object.assign(overlay.style, {
-    position: 'fixed', inset: '0', zIndex: '100', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    // top/left/width/height explicites (et non `inset`) : fonctionne aussi sur les navigateurs Android plus anciens.
+    position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', boxSizing: 'border-box',
+    zIndex: '100', display: 'flex', alignItems: 'center', justifyContent: 'center',
     padding: '24px', background: 'var(--bg, #0c0a08)', color: 'var(--text, #f4efe4)', overflowY: 'auto', textAlign: 'center'
   });
 
@@ -63,24 +65,67 @@ export function showMaintenancePage(data, { preview = false } = {}) {
   }
 }
 
+let endWatchStarted = false;
+let startWatchStarted = false;
+
+// Maintenance affichée : quand elle se termine, la page se recharge toute seule.
+function watchForEnd() {
+  if (endWatchStarted) return;
+  endWatchStarted = true;
+  setInterval(async () => {
+    try {
+      const { data, error } = await supabase.rpc('get_maintenance');
+      if (!error && !data) location.reload();
+    } catch {
+      /* réseau indisponible : on réessaiera */
+    }
+  }, WATCH_MS);
+}
+
+// Site accessible : si la maintenance est activée PENDANT que le visiteur a déjà la page ouverte, la page de
+// maintenance s'affiche d'elle-même (vérification toutes les 45 s, et dès que l'onglet redevient visible).
+function watchForStart() {
+  if (startWatchStarted) return;
+  startWatchStarted = true;
+  let shown = false;
+  const check = async () => {
+    if (shown || document.hidden) return;
+    try {
+      const { data, error } = await supabase.rpc('get_maintenance');
+      if (!error && data) {
+        shown = true;
+        showMaintenancePage(data);
+        watchForEnd();
+      }
+    } catch {
+      /* réseau indisponible : on réessaiera */
+    }
+  };
+  setInterval(check, 45000);
+  document.addEventListener('visibilitychange', check);
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) check();
+  });
+}
+
 // À appeler en tout début de page publique. Renvoie true si le site est en maintenance (la page est alors affichée :
 // l'appelant ne doit rien charger d'autre). En cas d'erreur réseau, le site reste accessible (on ne bloque jamais à tort).
 export async function checkMaintenance() {
   try {
     const { data, error } = await supabase.rpc('get_maintenance');
-    if (error || !data) return false;
+    if (error) {
+      watchForStart();
+      return false;
+    }
+    if (!data) {
+      watchForStart();
+      return false;
+    }
     showMaintenancePage(data);
-    // Quand la maintenance se termine, la page se recharge toute seule.
-    setInterval(async () => {
-      try {
-        const { data: again, error: err } = await supabase.rpc('get_maintenance');
-        if (!err && !again) location.reload();
-      } catch {
-        /* réseau indisponible : on réessaiera */
-      }
-    }, WATCH_MS);
+    watchForEnd();
     return true;
   } catch {
+    watchForStart();
     return false;
   }
 }
