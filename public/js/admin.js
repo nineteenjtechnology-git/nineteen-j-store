@@ -1063,8 +1063,13 @@ async function uploadToStorage(bucket, file, onStatus) {
 async function uploadBinaryResumable(file, onProgress) {
   if (!window.tus) throw new Error('Bibliothèque d\u2019upload indisponible (tus-js-client non chargé).');
 
-  const ext = file.name.split('.').pop();
+  const ext = file.name.split('.').pop().toLowerCase();
   const path = `${crypto.randomUUID()}.${ext}`;
+  // file.type n'est pas fiable (ex. Windows/Samsung renvoie application/x-gsarcade-usersvc
+  // pour .apk) : on déduit le type de l'extension. Il doit rester dans les
+  // allowed_mime_types du bucket app-binaries.
+  const BINARY_MIME = { apk: 'application/vnd.android.package-archive', zip: 'application/zip' };
+  const contentType = BINARY_MIME[ext] || 'application/octet-stream';
 
   // getIdToken() peut échouer ponctuellement si le service Firebase Auth répond
   // 503 (vu en pratique) - une tentative suffit généralement à passer.
@@ -1094,7 +1099,7 @@ async function uploadBinaryResumable(file, onProgress) {
       metadata: {
         bucketName: 'app-binaries',
         objectName: path,
-        contentType: file.type || 'application/octet-stream',
+        contentType,
         cacheControl: '3600'
       },
       onError: (err) => {
