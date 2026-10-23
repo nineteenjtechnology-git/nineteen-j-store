@@ -1,0 +1,6 @@
+# robots.txt contrôle l'EXPLORATION, pas l'indexation (le noindex est posé page par page).
+User-agent: *
+Allow: /
+Disallow: /admin
+
+Sitemap: https://nineteen-j-store.web.app/sitemap.xml

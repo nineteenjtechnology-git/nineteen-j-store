@@ -561,7 +561,7 @@ function renderPush() {
   url.innerHTML =
     '<option value="/">Accueil du store</option>' +
     o.apps
-      .map((a) => `<option value="/app/detail?slug=${encodeURIComponent(a.slug)}">Page de ${escapeHtml(a.title)}</option>`)
+      .map((a) => `<option value="/apps/${encodeURIComponent(a.slug)}">Page de ${escapeHtml(a.title)}</option>`)
       .join('');
   if ([...url.options].some((opt) => opt.value === keepUrl)) url.value = keepUrl;
 

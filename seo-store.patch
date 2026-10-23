@@ -1,0 +1,611 @@
+diff --git a/.github/workflows/deploy.yml b/.github/workflows/deploy.yml
+index e145824..1bf6129 100644
+--- a/.github/workflows/deploy.yml
++++ b/.github/workflows/deploy.yml
+@@ -5,6 +5,9 @@ on:
+     branches: [main]
+   pull_request:
+     branches: [main]
++  workflow_dispatch:        # relancer à la main (ex. après avoir publié une app dans l'admin)
++  schedule:
++    - cron: '17 3 * * *'    # chaque nuit : régénère les fiches SEO + sitemap depuis Supabase
+ 
+ # Principe du moindre privilège : le workflow ne peut que lire le dépôt.
+ permissions:
+@@ -40,7 +43,7 @@ jobs:
+ 
+   deploy:
+     needs: verify
+-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
++    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+     runs-on: ubuntu-latest
+     environment: production   # permet d'exiger une approbation manuelle (Settings > Environments)
+     steps:
+@@ -52,6 +55,10 @@ jobs:
+       - run: npm ci
+       - run: npm run build:css
+ 
++      # Pré-rendu SEO : fiches /apps/<slug>, sitemap.xml, liste d'apps de l'accueil (lecture publique Supabase, aucun secret).
++      - name: Pré-rendu SEO
++        run: npm run build:seo
++
+       # Compte de service au rôle minimal (Firebase Hosting Admin) au lieu d'un
+       # jeton personnel longue durée (`firebase login:ci`, déprécié).
+       - uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0
+@@ -65,3 +72,11 @@ jobs:
+           sleep 8
+           curl -sSf "${{ secrets.HOSTING_URL }}" -o /dev/null \
+             || (echo "Health check échoué - envisager un rollback (voir README)" && exit 1)
++
++      - name: Contrôles SEO post-déploiement
++        run: |
++          base="${{ secrets.HOSTING_URL }}"
++          curl -sSf "$base/robots.txt" | grep -q "Sitemap:" || (echo "robots.txt sans Sitemap" && exit 1)
++          curl -sSf "$base/sitemap.xml" | grep -q "<urlset" || (echo "sitemap.xml invalide" && exit 1)
++          code=$(curl -s -o /dev/null -w "%{http_code}" "$base/page-qui-nexiste-pas-$RANDOM")
++          [ "$code" = "404" ] || (echo "Une URL inconnue doit répondre 404 (reçu $code)" && exit 1)
+diff --git a/.gitignore b/.gitignore
+index f68ed87..7621317 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -5,3 +5,6 @@ functions/.env
+ functions/.env.*
+ .DS_Store
+ *.local
++# Généré par scripts/prerender.mjs (npm run build:seo)
++public/apps/
++public/sitemap.xml
+diff --git a/README.md b/README.md
+index 1a64d43..2a0b063 100644
+--- a/README.md
++++ b/README.md
+@@ -246,3 +246,11 @@ enregistré en base → 404. Corrigé en désactivant la reprise inter-session
+ (`upload.start()` direct, `storeFingerprintForResuming: false`) ; la résilience
+ réseau reste assurée par les tentatives automatiques (`retryDelays`) au sein d'un
+ même upload en cours.
++
++## SEO (référencement)
++
++- **Fiches d'apps** : URL canonique `/apps/<slug>` (pré-rendue au build : title, description, canonical, Open Graph, JSON-LD, texte). L'ancien format `/app/detail?slug=…` continue de fonctionner (noindex).
++- **Génération** : `npm run build:seo` lit les apps *publiées* dans Supabase (clé publishable, lecture seule, aucun secret) et écrit `public/apps/*.html`, `public/sitemap.xml` et la liste d'apps de `public/index.html` (entre les marqueurs `SEO:APPS-LIST`). Ces sorties sont ignorées par git (sauf le bloc de l'accueil, régénéré à chaque build).
++- **Déploiement** : `npm run deploy` (build CSS + SEO + `firebase deploy --only hosting`). La CI relance aussi le pré-rendu chaque nuit et sur `workflow_dispatch` : après avoir publié une app dans l'admin, lancer le workflow (ou attendre la nuit) pour que sa fiche soit indexable. En attendant, `/apps/<slug>` fonctionne quand même (repli interactif, noindex).
++- **Domaine** : `SITE_URL` (défaut `https://nineteen-j-store.web.app`) alimente canonical, sitemap et JSON-LD. Si tu ajoutes un domaine personnalisé : lancer le build avec `SITE_URL=https://ton-domaine`, mettre à jour `public/robots.txt` et `public/index.html` (canonical, og:url, JSON-LD), et ajouter une redirection 301 depuis l'ancien domaine.
++- **Contenu mince** : une fiche de moins de 20 mots reste générée (aperçu WhatsApp correct) mais en `noindex` et hors sitemap. Rédiger une vraie description (2–3 phrases utiles) pour qu'elle soit indexée.
+diff --git a/firebase.json b/firebase.json
+index b4aa14e..92c6ba1 100644
+--- a/firebase.json
++++ b/firebase.json
+@@ -173,6 +173,31 @@
+           }
+         ]
+       },
++      {
++        "source": "/apps/**",
++        "headers": [
++          {
++            "key": "X-Frame-Options",
++            "value": "DENY"
++          },
++          {
++            "key": "Permissions-Policy",
++            "value": "camera=(), microphone=(), geolocation=(), payment=()"
++          },
++          {
++            "key": "Content-Security-Policy",
++            "value": "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'"
++          },
++          {
++            "key": "Content-Security-Policy-Report-Only",
++            "value": "default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.supabase.co https://*.storage.supabase.co; connect-src 'self' https://*.supabase.co https://*.storage.supabase.co https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com; frame-src https://*.firebaseapp.com https://accounts.google.com; worker-src 'self'; manifest-src 'self'; form-action 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'"
++          },
++          {
++            "key": "Cache-Control",
++            "value": "public, max-age=0, must-revalidate"
++          }
++        ]
++      },
+       {
+         "source": "/sw.js",
+         "headers": [
+@@ -208,6 +233,39 @@
+             "value": "public, max-age=604800"
+           }
+         ]
++      },
++      {
++        "source": "/admin/**",
++        "headers": [
++          {
++            "key": "X-Robots-Tag",
++            "value": "noindex, nofollow"
++          }
++        ]
++      },
++      {
++        "source": "/admin",
++        "headers": [
++          {
++            "key": "X-Robots-Tag",
++            "value": "noindex, nofollow"
++          }
++        ]
++      },
++      {
++        "source": "/sitemap.xml",
++        "headers": [
++          {
++            "key": "Cache-Control",
++            "value": "public, max-age=3600"
++          }
++        ]
++      }
++    ],
++    "rewrites": [
++      {
++        "source": "/apps/**",
++        "destination": "/app/detail.html"
+       }
+     ]
+   },
+diff --git a/package.json b/package.json
+index 17fd827..9755d04 100644
+--- a/package.json
++++ b/package.json
+@@ -6,7 +6,10 @@
+   "scripts": {
+     "build:css": "tailwindcss -c tailwind.config.js -i src/tailwind.input.css -o public/assets/css/tailwind.css --minify",
+     "watch:css": "tailwindcss -c tailwind.config.js -i src/tailwind.input.css -o public/assets/css/tailwind.css --watch",
+-    "lint": "eslint public/js --ext .js"
++    "lint": "eslint public/js --ext .js",
++    "build:seo": "node scripts/prerender.mjs",
++    "build": "npm run build:css && npm run build:seo",
++    "deploy": "npm run build && firebase deploy --only hosting"
+   },
+   "devDependencies": {
+     "tailwindcss": "3.4.17"
+diff --git a/public/404.html b/public/404.html
+new file mode 100644
+index 0000000..1d5a079
+--- /dev/null
++++ b/public/404.html
+@@ -0,0 +1,22 @@
++<!doctype html>
++<html lang="fr">
++<head>
++<meta charset="UTF-8" />
++<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
++<title>Page introuvable - Nineteen J Store</title>
++<meta name="description" content="Cette page n'existe pas ou a été déplacée. Retrouve toutes les applications du Nineteen J Store depuis l'accueil." />
++<meta name="robots" content="noindex" />
++<meta name="theme-color" content="#0c0a08" />
++<link rel="icon" href="/assets/icons/icon-192.png" />
++<link rel="stylesheet" href="/assets/css/styles.css" />
++<link rel="stylesheet" href="/assets/css/tailwind.css" />
++</head>
++<body class="min-h-screen">
++<main class="max-w-3xl mx-auto px-4 py-24 text-center">
++  <img src="/assets/icons/icon-192.png" alt="" width="64" height="64" class="w-16 h-16 rounded-lg mx-auto mb-6" />
++  <h1 class="font-display text-3xl font-bold mb-2">Page introuvable</h1>
++  <p class="text-[var(--muted)] mb-6">Le lien est peut-être incorrect, ou l'application a été retirée du store.</p>
++  <a href="/" class="btn-primary px-5 py-2.5 rounded-lg inline-block">Retour au Nineteen J Store</a>
++</main>
++</body>
++</html>
+diff --git a/public/app/detail.html b/public/app/detail.html
+index 4620563..5553016 100644
+--- a/public/app/detail.html
++++ b/public/app/detail.html
+@@ -3,14 +3,17 @@
+ <head>
+ <meta charset="UTF-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+-<title>Application - Nineteen J Store</title>
+ <meta name="theme-color" content="#0c0a08" />
++<!-- SEO:HEAD:START -->
++<title>Application - Nineteen J Store</title>
+ <meta name="description" content="Télécharge des applications Android et web créées par Nineteen J." />
++<meta name="robots" content="noindex, follow" />
+ <meta property="og:type" content="website" />
+ <meta property="og:site_name" content="Nineteen J Store" />
+ <meta property="og:title" content="Nineteen J Store" />
+ <meta property="og:description" content="Télécharge des applications Android et web créées par Nineteen J." />
+ <meta property="og:image" content="https://nineteen-j-store.web.app/assets/icons/icon-512.png" />
++<!-- SEO:HEAD:END -->
+ <link rel="manifest" href="/manifest.json" />
+ <link rel="icon" href="/assets/icons/icon-192.png" />
+ <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
+@@ -19,7 +22,7 @@
+ <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+ <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+ <link rel="stylesheet" href="/assets/css/tailwind.css" />
+-<script src="/js/vendor/supabase.js"></script>
++<script src="/js/vendor/supabase.js" defer></script>
+ </head>
+ <body class="min-h-screen">
+ 
+@@ -27,14 +30,14 @@
+   <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+     <a href="/" class="btn-ghost w-9 h-9 rounded-lg flex items-center justify-center shrink-0" aria-label="Retour">←</a>
+     <a href="/" class="flex items-center gap-2">
+-      <img src="/assets/icons/icon-192.png" alt="" class="w-8 h-8 rounded-lg" />
++      <img src="/assets/icons/icon-192.png" alt="" width="32" height="32" class="w-8 h-8 rounded-lg" />
+       <span class="font-display font-semibold">Nineteen J Store</span>
+     </a>
+   </div>
+ </header>
+ 
+ <main class="max-w-3xl mx-auto px-4 py-8">
+-  <div id="detail-root"><!-- rempli par app-detail.js --></div>
++  <div id="detail-root"><!-- SEO:BODY:START --><!-- SEO:BODY:END --></div>
+   <div id="not-found" class="hidden text-center py-24">
+     <p class="font-display text-2xl font-semibold mb-2">Application introuvable</p>
+     <p class="text-[var(--muted)] mb-6">Elle a peut-être été retirée du store.</p>
+diff --git a/public/index.html b/public/index.html
+index 45f8336..ba996ec 100644
+--- a/public/index.html
++++ b/public/index.html
+@@ -3,8 +3,18 @@
+ <head>
+ <meta charset="UTF-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+-<title>Nineteen J Store - Applications Web & Mobile</title>
+-<meta name="description" content="Le store d'applications de Nineteen J Apps : Apps Mobiles, jeux, outils et PWA pour Android, iOS et le Web." />
++<title>Nineteen J Store : applications, jeux et outils Android &amp; Web</title>
++<meta name="description" content="Télécharge les applications, jeux et outils de Nineteen J : apps Android (APK), applications web et PWA. Fiches détaillées, captures d'écran, notes et avis." />
++<link rel="canonical" href="https://nineteen-j-store.web.app/" />
++<meta property="og:type" content="website" />
++<meta property="og:locale" content="fr_FR" />
++<meta property="og:site_name" content="Nineteen J Store" />
++<meta property="og:title" content="Nineteen J Store : applications, jeux et outils Android &amp; Web" />
++<meta property="og:description" content="Télécharge les applications, jeux et outils de Nineteen J : apps Android (APK), applications web et PWA." />
++<meta property="og:url" content="https://nineteen-j-store.web.app/" />
++<meta property="og:image" content="https://nineteen-j-store.web.app/assets/icons/icon-512.png" />
++<meta name="twitter:card" content="summary" />
++<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://nineteen-j-store.web.app/#org", "name": "Nineteen J Technology", "url": "https://nineteen-j-store.web.app/", "logo": "https://nineteen-j-store.web.app/assets/icons/icon-512.png"}, {"@type": "WebSite", "@id": "https://nineteen-j-store.web.app/#site", "name": "Nineteen J Store", "url": "https://nineteen-j-store.web.app/", "inLanguage": "fr", "publisher": {"@id": "https://nineteen-j-store.web.app/#org"}}]}</script>
+ <meta name="theme-color" content="#0c0a08" />
+ <link rel="manifest" href="/manifest.json" />
+ <link rel="icon" href="/assets/icons/icon-192.png" />
+@@ -15,14 +25,14 @@
+ <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+ <link rel="stylesheet" href="/assets/css/tailwind.css" />
+ <script src="/js/vendor/lucide.min.js" defer></script>
+-<script src="/js/vendor/supabase.js"></script>
++<script src="/js/vendor/supabase.js" defer></script>
+ </head>
+ <body class="min-h-screen">
+ 
+ <header class="sticky top-0 z-30 backdrop-blur border-b" style="background:color-mix(in srgb, var(--bg) 88%, transparent); border-color:var(--border);">
+   <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+     <a href="/" class="flex items-center gap-2 shrink-0">
+-      <img src="/assets/icons/icon-192.png" alt="" class="w-9 h-9 rounded-lg" />
++      <img src="/assets/icons/icon-192.png" alt="" width="36" height="36" class="w-9 h-9 rounded-lg" />
+       <span class="font-display font-bold text-lg hidden sm:block">Nineteen J Store</span>
+     </a>
+ 
+@@ -63,7 +73,7 @@
+   </section>
+ 
+   <section class="mt-6">
+-    <div id="apps-grid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
++    <div id="apps-grid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"><!-- SEO:APPS-LIST:START --><!-- SEO:APPS-LIST:END --></div>
+     <p id="empty-state" class="hidden text-center text-[var(--muted)] py-16">Aucune application ne correspond à ta recherche.</p>
+   </section>
+ 
+@@ -74,7 +84,7 @@
+ </footer>
+ 
+ <div id="install-banner" class="install-banner hidden fixed bottom-4 inset-x-4 sm:inset-x-auto sm:right-4 sm:w-96 surface rounded-xl p-4 shadow-2xl z-40 flex items-center gap-3">
+-  <img src="/assets/icons/icon-192.png" alt="" class="w-10 h-10 rounded-lg" />
++  <img src="/assets/icons/icon-192.png" alt="" width="40" height="40" class="w-10 h-10 rounded-lg" />
+   <div class="flex-1 text-sm">
+     <p class="font-medium">Installer le Store</p>
+     <p class="text-[var(--muted)] text-xs">Accès rapide, même hors ligne.</p>
+diff --git a/public/js/admin.js b/public/js/admin.js
+index 884bffd..914cdb5 100644
+--- a/public/js/admin.js
++++ b/public/js/admin.js
+@@ -561,7 +561,7 @@ function renderPush() {
+   url.innerHTML =
+     '<option value="/">Accueil du store</option>' +
+     o.apps
+-      .map((a) => `<option value="/app/detail?slug=${encodeURIComponent(a.slug)}">Page de ${escapeHtml(a.title)}</option>`)
++      .map((a) => `<option value="/apps/${encodeURIComponent(a.slug)}">Page de ${escapeHtml(a.title)}</option>`)
+       .join('');
+   if ([...url.options].some((opt) => opt.value === keepUrl)) url.value = keepUrl;
+ 
+diff --git a/public/js/app-detail.js b/public/js/app-detail.js
+index 3c0da8d..d57b96a 100644
+--- a/public/js/app-detail.js
++++ b/public/js/app-detail.js
+@@ -18,7 +18,10 @@ if (!inMaintenance) showAnnouncementIfAny();
+ 
+ const PLATFORM_LABELS = { android: 'Android', ios: 'iOS', web: 'Web', cross_platform: 'Multiplateforme' };
+ const params = new URLSearchParams(location.search);
+-const slug = params.get('slug');
++// Slug : /apps/<slug> (URL canonique, pré-rendue) ou ancien format /app/detail?slug=<slug>.
++const slug = params.get('slug') || (() => {
++  try { return decodeURIComponent(location.pathname.match(/^\/apps\/([^/?#]+)/)?.[1] || '') || null; } catch { return null; }
++})();
+ 
+ const root = document.getElementById('detail-root');
+ const notFound = document.getElementById('not-found');
+@@ -73,7 +76,8 @@ async function loadApp() {
+   ]);
+ 
+   render(app, versions?.[0], versions || [], screenshots || [], comments || [], myRating.data || 0);
+-  document.title = `${app.title} - Nineteen J Store`;
++  // Ne pas écraser le <title> pré-rendu (identique pour Google avant/après exécution du JS).
++  if (document.title.startsWith('Application')) document.title = `${app.title} - Nineteen J Store`;
+ 
+   // L'état de connexion n'affecte que la section commentaires - on ne la
+   // (re)dessine qu'elle, pour ne pas perdre le reste au moindre changement d'auth.
+@@ -280,7 +284,7 @@ async function trackDownload(app) {
+ // Lien propre vers la page de l'app ; ?src=partage permet de voir dans l'admin combien de personnes
+ // arrivent via un partage (source du lien).
+ function shareUrl(app) {
+-  return `${location.origin}/app/detail?slug=${encodeURIComponent(app.slug)}&src=partage`;
++  return `${location.origin}/apps/${encodeURIComponent(app.slug)}?src=partage`;
+ }
+ 
+ function setupShare(app) {
+diff --git a/public/js/store.js b/public/js/store.js
+index 5e93dd3..bd426e3 100644
+--- a/public/js/store.js
++++ b/public/js/store.js
+@@ -80,12 +80,12 @@ function appCard(app) {
+   const icon = app.icon_url || '/assets/icons/icon-192.png';
+   const cat = state.categories.find((c) => c.id === app.category_id);
+   return `
+-    <a href="/app/detail.html?slug=${encodeURIComponent(app.slug)}" class="app-card p-4 flex gap-4 items-center group">
++    <a href="/apps/${encodeURIComponent(app.slug)}" class="app-card p-4 flex gap-4 items-center group">
+       <div class="icon-frame w-16 h-16">
+         <img src="${icon}" alt="" class="w-full h-full object-cover" loading="lazy" />
+       </div>
+       <div class="min-w-0 flex-1">
+-        <h3 class="font-display font-semibold truncate group-hover:text-[var(--accent)]">${escapeHtml(app.title)}</h3>
++        <h2 class="font-display font-semibold truncate group-hover:text-[var(--accent)]">${escapeHtml(app.title)}</h2>
+         <p class="text-sm text-[var(--muted)] truncate">${escapeHtml(cat?.name || 'Application')} · ${PLATFORM_LABELS[app.platform] || app.platform}</p>
+         <div class="flex items-center gap-1 mt-1">${starRow(app.rating)}<span class="text-xs text-[var(--muted)] ml-1" title="${Number(app.download_count) || 0} téléchargement(s) · ${app.rating_count || 0} avis">${Number(app.rating).toFixed(1)} (${formatDownloads(app.download_count)})</span></div>
+       </div>
+@@ -95,13 +95,13 @@ function appCard(app) {
+ function featuredCard(app) {
+   const icon = app.icon_url || '/assets/icons/icon-512.png';
+   return `
+-    <a href="/app/detail.html?slug=${encodeURIComponent(app.slug)}"
++    <a href="/apps/${encodeURIComponent(app.slug)}"
+        class="app-card relative flex-shrink-0 w-64 sm:w-72 h-40 overflow-hidden flex items-end p-4 snap-start">
+       <img src="${icon}" alt="" class="absolute inset-0 w-full h-full object-cover opacity-25" loading="lazy" />
+       <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+       <div class="relative">
+         <p class="text-xs uppercase tracking-wide text-[var(--accent)] font-semibold mb-1">À la une</p>
+-        <h3 class="font-display text-lg font-semibold text-white truncate">${escapeHtml(app.title)}</h3>
++        <h2 class="font-display text-lg font-semibold text-white truncate">${escapeHtml(app.title)}</h2>
+         <p class="text-sm text-white/70 truncate">${escapeHtml(app.short_description)}</p>
+       </div>
+     </a>`;
+@@ -141,7 +141,8 @@ function applyFiltersAndRender() {
+ }
+ 
+ async function loadData() {
+-  els.grid.innerHTML = skeletonCards();
++  // La liste pré-rendue (SEO) reste affichée tant que les données live ne sont pas là : pas de flash de squelettes.
++  if (!els.grid.querySelector('a')) els.grid.innerHTML = skeletonCards();
+ 
+   const [{ data: categories, error: catErr }, { data: apps, error: appErr }] = await Promise.all([
+     supabase.from('categories').select('*').order('display_order').order('name'),
+diff --git a/public/offline.html b/public/offline.html
+index 0c6188f..ecf4210 100644
+--- a/public/offline.html
++++ b/public/offline.html
+@@ -2,6 +2,7 @@
+ <html lang="fr">
+ <head>
+ <meta charset="UTF-8" />
++<meta name="robots" content="noindex" />
+ <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+ <title>Hors ligne - Nineteen J Store</title>
+ <link rel="stylesheet" href="/assets/css/offline.css" />
+diff --git a/public/robots.txt b/public/robots.txt
+new file mode 100644
+index 0000000..a981df2
+--- /dev/null
++++ b/public/robots.txt
+@@ -0,0 +1,6 @@
++# robots.txt contrôle l'EXPLORATION, pas l'indexation (le noindex est posé page par page).
++User-agent: *
++Allow: /
++Disallow: /admin
++
++Sitemap: https://nineteen-j-store.web.app/sitemap.xml
+diff --git a/scripts/prerender.mjs b/scripts/prerender.mjs
+new file mode 100644
+index 0000000..0e4bbbb
+--- /dev/null
++++ b/scripts/prerender.mjs
+@@ -0,0 +1,186 @@
++// scripts/prerender.mjs — pré-rendu SEO du Store (Node 18+, aucune dépendance).
++//
++// Génère, depuis les apps PUBLIÉES dans Supabase (clé publishable + RLS, lecture seule) :
++//   - public/apps/<slug>.html   fiche statique par app (title, description, canonical, OG, JSON-LD, contenu)
++//   - public/sitemap.xml        accueil + fiches indexables
++//   - bloc « liste des apps » de public/index.html (entre les marqueurs SEO:APPS-LIST)
++// Le gabarit des fiches est public/app/detail.html (marqueurs SEO:HEAD et SEO:BODY) : un seul gabarit à maintenir.
++//
++// Usage : node scripts/prerender.mjs            (SITE_URL, SUPABASE_URL, SUPABASE_KEY facultatifs)
++import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
++import { join } from 'node:path';
++
++const PUBLIC = join(process.cwd(), 'public');
++const SITE_URL = (process.env.SITE_URL || 'https://nineteen-j-store.web.app').replace(/\/+$/, '');
++const SITE_NAME = 'Nineteen J Store';
++const ORG_NAME = 'Nineteen J Technology';
++const MIN_WORDS = 20; // sous ce seuil la fiche reste générée (aperçu WhatsApp) mais en noindex, hors sitemap
++
++const PLATFORM = { android: 'Android', ios: 'iOS', web: 'Web', cross_platform: 'Multiplateforme' };
++const OS = { android: 'ANDROID', ios: 'IOS', web: 'Web', cross_platform: 'ANDROID, IOS, Web' };
++const esc = (s = '') => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
++const words = (s) => (String(s || '').trim().match(/\S+/g) || []).length;
++const ld = (o) => JSON.stringify(o).replace(/</g, '\\u003c');
++const clip = (s, n) => (s.length <= n ? s : s.slice(0, n - 1).replace(/\s+\S*$/, '') + '…');
++
++// ---------- Config Supabase (valeurs publiques, déjà présentes dans supabase-config.js) ----------
++async function supabaseConfig() {
++  let url = process.env.SUPABASE_URL, key = process.env.SUPABASE_KEY;
++  if (!url || !key) {
++    const src = await readFile(join(PUBLIC, 'js/supabase-config.js'), 'utf8');
++    const ref = src.match(/SUPABASE_PROJECT_REF\s*=\s*'([^']+)'/)?.[1];
++    url ||= ref && `https://${ref}.supabase.co`;
++    key ||= src.match(/SUPABASE_PUBLISHABLE_KEY\s*=\s*'([^']+)'/)?.[1];
++  }
++  if (!url || !key) throw new Error('Config Supabase introuvable (SUPABASE_URL / SUPABASE_KEY).');
++  return { url, key };
++}
++
++async function rest(cfg, path) {
++  const res = await fetch(`${cfg.url}/rest/v1/${path}`, { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } });
++  if (!res.ok) throw new Error(`Supabase ${res.status} sur ${path.split('?')[0]} : ${await res.text()}`);
++  return res.json();
++}
++
++const between = (html, tag, inner) => {
++  const re = new RegExp(`(<!-- SEO:${tag}:START -->)[\\s\\S]*?(<!-- SEO:${tag}:END -->)`);
++  if (!re.test(html)) throw new Error(`Marqueur SEO:${tag} absent.`);
++  return html.replace(re, (_, a, b) => `${a}\n${inner}\n${b}`);
++};
++
++// ---------- Contenu d'une fiche ----------
++function metaFor(app, cat, current) {
++  const plat = PLATFORM[app.platform] || app.platform;
++  const verb = app.platform === 'web' ? `${app.title} : application web` : `Télécharger ${app.title} pour ${plat}`;
++  let title = `${verb} | ${SITE_NAME}`;
++  if (title.length > 62) title = clip(verb, 62);
++  const base = (app.short_description || '').trim();
++  const extra = (app.full_description || '').trim().split(/(?<=[.!?])\s/)[0] || '';
++  let desc = base;
++  const joined = `${base.replace(/[.!?]?$/, '.')} ${extra}`.replace(/\s+/g, ' ');
++  // On complète la description courte avec la 1re phrase du texte long seulement si le tout tient dans un snippet.
++  if (base.length < 110 && extra && !base.includes(extra) && joined.length <= 158) desc = joined;
++  desc = clip(desc.replace(/\s+/g, ' '), 158);
++  const url = `${SITE_URL}/apps/${encodeURIComponent(app.slug)}`;
++  const image = app.icon_url || `${SITE_URL}/assets/icons/icon-512.png`;
++  const text = `${app.short_description || ''} ${app.full_description || ''}`;
++  const indexable = words(text) >= MIN_WORDS;
++  return { title, desc, url, image, indexable, plat, current };
++}
++
++function category(catName = '') {
++  const n = catName.toLowerCase();
++  if (/jeu|game/.test(n)) return 'GameApplication';
++  if (/éduc|educ|étud|etud|scol/.test(n)) return 'EducationalApplication';
++  if (/financ|factur|compta/.test(n)) return 'FinanceApplication';
++  if (/outil|util|product/.test(n)) return 'UtilitiesApplication';
++  return undefined; // inconnue : on n'invente pas
++}
++
++function jsonLd(app, m, catName, shots) {
++  const type = app.platform === 'web' ? 'WebApplication' : app.platform === 'cross_platform' ? 'SoftwareApplication' : 'MobileApplication';
++  const rated = Number(app.rating) > 0 && Number(app.rating_count) > 0;
++  const sw = {
++    '@type': type, name: app.title, description: m.desc, url: m.url, image: m.image,
++    inLanguage: 'fr', operatingSystem: OS[app.platform] || 'Any',
++    applicationCategory: category(catName),
++    softwareVersion: m.current?.version_number || undefined,
++    datePublished: app.created_at || undefined, dateModified: app.updated_at || undefined,
++    author: { '@type': 'Organization', name: app.developer_name || ORG_NAME },
++    offers: { '@type': 'Offer', price: '0', priceCurrency: 'XOF' },
++    screenshot: shots.length ? shots.slice(0, 5).map((s) => s.image_url) : undefined,
++    aggregateRating: rated ? { '@type': 'AggregateRating', ratingValue: Number(app.rating), ratingCount: Number(app.rating_count), bestRating: 5, worstRating: 1 } : undefined
++  };
++  return ld({
++    '@context': 'https://schema.org',
++    '@graph': [sw, { '@type': 'BreadcrumbList', itemListElement: [
++      { '@type': 'ListItem', position: 1, name: 'Accueil', item: `${SITE_URL}/` },
++      { '@type': 'ListItem', position: 2, name: app.title }
++    ] }]
++  });
++}
++
++function headBlock(app, m, catName, shots) {
++  return [
++    `<title>${esc(m.title)}</title>`,
++    `<meta name="description" content="${esc(m.desc)}" />`,
++    m.indexable ? '' : '<meta name="robots" content="noindex, follow" />',
++    `<link rel="canonical" href="${esc(m.url)}" />`,
++    '<meta property="og:type" content="website" />',
++    '<meta property="og:locale" content="fr_FR" />',
++    `<meta property="og:site_name" content="${SITE_NAME}" />`,
++    `<meta property="og:title" content="${esc(m.title)}" />`,
++    `<meta property="og:description" content="${esc(m.desc)}" />`,
++    `<meta property="og:url" content="${esc(m.url)}" />`,
++    `<meta property="og:image" content="${esc(m.image)}" />`,
++    `<meta property="og:image:alt" content="${esc(`Icône de ${app.title}`)}" />`,
++    '<meta name="twitter:card" content="summary" />',
++    `<script type="application/ld+json">${jsonLd(app, m, catName, shots)}</script>`
++  ].filter(Boolean).join('\n');
++}
++
++// Remplacé par app-detail.js dès que les données live sont chargées (root.innerHTML).
++function bodyBlock(app, m, catName, shots) {
++  const icon = esc(app.icon_url || '/assets/icons/icon-512.png');
++  const paras = String(app.full_description || app.short_description || '').split(/\n{2,}/).map((p) => `<p class="text-[var(--muted)] leading-relaxed whitespace-pre-line">${esc(p)}</p>`).join('\n');
++  const imgs = shots.slice(0, 6).map((s, i) => `<img src="${esc(s.image_url)}" alt="${esc(`Capture d'écran ${i + 1} de ${app.title}`)}" class="h-64 w-auto object-cover rounded-lg" loading="lazy" />`).join('\n');
++  // Même structure que le rendu live (app-detail.js) pour limiter le décalage de mise en page (CLS) au remplacement.
++  return `<div class="flex flex-col sm:flex-row gap-6 items-start sm:items-center">
++  <div class="icon-frame w-24 h-24 sm:w-28 sm:h-28"><img src="${icon}" alt="${esc(`Icône de ${app.title}`)}" width="112" height="112" class="w-full h-full object-cover" /></div>
++  <div class="flex-1 min-w-0">
++    <h1 class="font-display text-2xl sm:text-3xl font-bold">${esc(app.title)}</h1>
++    <p class="text-[var(--muted)] mt-1">${esc(app.developer_name || ORG_NAME)} · ${esc(m.plat)}${catName ? ` · ${esc(catName)}` : ''}${m.current?.version_number ? ` · version ${esc(m.current.version_number)}` : ''}</p>
++  </div>
++</div>
++${imgs ? `<div class="mt-8"><h2 class="font-display text-lg font-semibold mb-3">Captures d'écran</h2><div class="shelf flex gap-3 overflow-x-auto pb-2">${imgs}</div></div>` : ''}
++<div class="mt-8"><h2 class="font-display text-lg font-semibold mb-2">Description</h2>
++${paras}</div>`;
++}
++
++function cardHtml(app, catName) {
++  const icon = esc(app.icon_url || '/assets/icons/icon-192.png');
++  return `<a href="/apps/${encodeURIComponent(app.slug)}" class="app-card p-4 flex gap-4 items-center group">
++  <div class="icon-frame w-16 h-16"><img src="${icon}" alt="" width="64" height="64" class="w-full h-full object-cover" loading="lazy" /></div>
++  <div class="min-w-0 flex-1"><h2 class="font-display font-semibold truncate">${esc(app.title)}</h2>
++  <p class="text-sm text-[var(--muted)] truncate">${esc(catName || 'Application')} · ${esc(PLATFORM[app.platform] || app.platform)}</p></div></a>`;
++}
++
++// ---------- Main ----------
++const cfg = await supabaseConfig();
++const [apps, cats, versions, shots] = await Promise.all([
++  rest(cfg, 'apps?select=*&status=eq.published&order=updated_at.desc'),
++  rest(cfg, 'categories?select=id,name'),
++  rest(cfg, 'app_versions?select=app_id,version_number,created_at&is_current=eq.true'),
++  rest(cfg, 'app_screenshots?select=app_id,image_url,display_order&order=display_order.asc')
++]);
++const catName = Object.fromEntries(cats.map((c) => [c.id, c.name]));
++const curBy = Object.fromEntries(versions.map((v) => [v.app_id, v]));
++const shotsBy = {};
++for (const s of shots) (shotsBy[s.app_id] ||= []).push(s);
++
++const template = await readFile(join(PUBLIC, 'app/detail.html'), 'utf8');
++const outDir = join(PUBLIC, 'apps');
++await rm(outDir, { recursive: true, force: true });
++await mkdir(outDir, { recursive: true });
++
++const urls = [{ loc: `${SITE_URL}/`, lastmod: (apps[0]?.updated_at || '').slice(0, 10) }];
++let thin = 0;
++for (const app of apps) {
++  if (!app.slug || !/^[a-z0-9][a-z0-9-]*$/i.test(app.slug)) { console.warn(`Slug ignoré : ${app.slug}`); continue; }
++  const name = catName[app.category_id];
++  const m = metaFor(app, name, curBy[app.id]);
++  const mine = shotsBy[app.id] || [];
++  let html = between(template, 'HEAD', headBlock(app, m, name, mine));
++  html = between(html, 'BODY', bodyBlock(app, m, name, mine));
++  await writeFile(join(outDir, `${app.slug}.html`), html, 'utf8');
++  if (m.indexable) urls.push({ loc: m.url, lastmod: (app.updated_at || '').slice(0, 10) }); else thin++;
++}
++
++await writeFile(join(PUBLIC, 'sitemap.xml'),
++  `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
++  urls.map((u) => `  <url><loc>${esc(u.loc)}</loc>${u.lastmod ? `<lastmod>${u.lastmod}</lastmod>` : ''}</url>`).join('\n') + '\n</urlset>\n', 'utf8');
++
++const indexPath = join(PUBLIC, 'index.html');
++await writeFile(indexPath, between(await readFile(indexPath, 'utf8'), 'APPS-LIST', apps.map((a) => cardHtml(a, catName[a.category_id])).join('\n')), 'utf8');
++
++console.log(`Pré-rendu : ${apps.length} app(s) publiée(s) → ${apps.length - thin} indexable(s), ${thin} en noindex (contenu < ${MIN_WORDS} mots). Sitemap : ${urls.length} URL.`);

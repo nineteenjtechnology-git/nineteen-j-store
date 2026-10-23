@@ -18,7 +18,10 @@ if (!inMaintenance) showAnnouncementIfAny();
 
 const PLATFORM_LABELS = { android: 'Android', ios: 'iOS', web: 'Web', cross_platform: 'Multiplateforme' };
 const params = new URLSearchParams(location.search);
-const slug = params.get('slug');
+// Slug : /apps/<slug> (URL canonique, pré-rendue) ou ancien format /app/detail?slug=<slug>.
+const slug = params.get('slug') || (() => {
+  try { return decodeURIComponent(location.pathname.match(/^\/apps\/([^/?#]+)/)?.[1] || '') || null; } catch { return null; }
+})();
 
 const root = document.getElementById('detail-root');
 const notFound = document.getElementById('not-found');
@@ -73,7 +76,8 @@ async function loadApp() {
   ]);
 
   render(app, versions?.[0], versions || [], screenshots || [], comments || [], myRating.data || 0);
-  document.title = `${app.title} - Nineteen J Store`;
+  // Ne pas écraser le <title> pré-rendu (identique pour Google avant/après exécution du JS).
+  if (document.title.startsWith('Application')) document.title = `${app.title} - Nineteen J Store`;
 
   // L'état de connexion n'affecte que la section commentaires - on ne la
   // (re)dessine qu'elle, pour ne pas perdre le reste au moindre changement d'auth.
@@ -280,7 +284,7 @@ async function trackDownload(app) {
 // Lien propre vers la page de l'app ; ?src=partage permet de voir dans l'admin combien de personnes
 // arrivent via un partage (source du lien).
 function shareUrl(app) {
-  return `${location.origin}/app/detail?slug=${encodeURIComponent(app.slug)}&src=partage`;
+  return `${location.origin}/apps/${encodeURIComponent(app.slug)}?src=partage`;
 }
 
 function setupShare(app) {

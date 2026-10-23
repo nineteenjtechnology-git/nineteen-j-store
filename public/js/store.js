@@ -80,12 +80,12 @@ function appCard(app) {
   const icon = app.icon_url || '/assets/icons/icon-192.png';
   const cat = state.categories.find((c) => c.id === app.category_id);
   return `
-    <a href="/app/detail.html?slug=${encodeURIComponent(app.slug)}" class="app-card p-4 flex gap-4 items-center group">
+    <a href="/apps/${encodeURIComponent(app.slug)}" class="app-card p-4 flex gap-4 items-center group">
       <div class="icon-frame w-16 h-16">
         <img src="${icon}" alt="" class="w-full h-full object-cover" loading="lazy" />
       </div>
       <div class="min-w-0 flex-1">
-        <h3 class="font-display font-semibold truncate group-hover:text-[var(--accent)]">${escapeHtml(app.title)}</h3>
+        <h2 class="font-display font-semibold truncate group-hover:text-[var(--accent)]">${escapeHtml(app.title)}</h2>
         <p class="text-sm text-[var(--muted)] truncate">${escapeHtml(cat?.name || 'Application')} · ${PLATFORM_LABELS[app.platform] || app.platform}</p>
         <div class="flex items-center gap-1 mt-1">${starRow(app.rating)}<span class="text-xs text-[var(--muted)] ml-1" title="${Number(app.download_count) || 0} téléchargement(s) · ${app.rating_count || 0} avis">${Number(app.rating).toFixed(1)} (${formatDownloads(app.download_count)})</span></div>
       </div>
@@ -95,13 +95,13 @@ function appCard(app) {
 function featuredCard(app) {
   const icon = app.icon_url || '/assets/icons/icon-512.png';
   return `
-    <a href="/app/detail.html?slug=${encodeURIComponent(app.slug)}"
+    <a href="/apps/${encodeURIComponent(app.slug)}"
        class="app-card relative flex-shrink-0 w-64 sm:w-72 h-40 overflow-hidden flex items-end p-4 snap-start">
       <img src="${icon}" alt="" class="absolute inset-0 w-full h-full object-cover opacity-25" loading="lazy" />
       <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
       <div class="relative">
         <p class="text-xs uppercase tracking-wide text-[var(--accent)] font-semibold mb-1">À la une</p>
-        <h3 class="font-display text-lg font-semibold text-white truncate">${escapeHtml(app.title)}</h3>
+        <h2 class="font-display text-lg font-semibold text-white truncate">${escapeHtml(app.title)}</h2>
         <p class="text-sm text-white/70 truncate">${escapeHtml(app.short_description)}</p>
       </div>
     </a>`;
@@ -141,7 +141,8 @@ function applyFiltersAndRender() {
 }
 
 async function loadData() {
-  els.grid.innerHTML = skeletonCards();
+  // La liste pré-rendue (SEO) reste affichée tant que les données live ne sont pas là : pas de flash de squelettes.
+  if (!els.grid.querySelector('a')) els.grid.innerHTML = skeletonCards();
 
   const [{ data: categories, error: catErr }, { data: apps, error: appErr }] = await Promise.all([
     supabase.from('categories').select('*').order('display_order').order('name'),

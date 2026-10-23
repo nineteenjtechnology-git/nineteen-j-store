@@ -3,8 +3,18 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Nineteen J Store - Applications Web & Mobile</title>
-<meta name="description" content="Le store d'applications de Nineteen J Apps : Apps Mobiles, jeux, outils et PWA pour Android, iOS et le Web." />
+<title>Nineteen J Store : applications, jeux et outils Android &amp; Web</title>
+<meta name="description" content="Télécharge les applications, jeux et outils de Nineteen J : apps Android (APK), applications web et PWA. Fiches détaillées, captures d'écran, notes et avis." />
+<link rel="canonical" href="https://nineteen-j-store.web.app/" />
+<meta property="og:type" content="website" />
+<meta property="og:locale" content="fr_FR" />
+<meta property="og:site_name" content="Nineteen J Store" />
+<meta property="og:title" content="Nineteen J Store : applications, jeux et outils Android &amp; Web" />
+<meta property="og:description" content="Télécharge les applications, jeux et outils de Nineteen J : apps Android (APK), applications web et PWA." />
+<meta property="og:url" content="https://nineteen-j-store.web.app/" />
+<meta property="og:image" content="https://nineteen-j-store.web.app/assets/icons/icon-512.png" />
+<meta name="twitter:card" content="summary" />
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://nineteen-j-store.web.app/#org", "name": "Nineteen J Technology", "url": "https://nineteen-j-store.web.app/", "logo": "https://nineteen-j-store.web.app/assets/icons/icon-512.png"}, {"@type": "WebSite", "@id": "https://nineteen-j-store.web.app/#site", "name": "Nineteen J Store", "url": "https://nineteen-j-store.web.app/", "inLanguage": "fr", "publisher": {"@id": "https://nineteen-j-store.web.app/#org"}}]}</script>
 <meta name="theme-color" content="#0c0a08" />
 <link rel="manifest" href="/manifest.json" />
 <link rel="icon" href="/assets/icons/icon-192.png" />
@@ -15,14 +25,14 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/assets/css/tailwind.css" />
 <script src="/js/vendor/lucide.min.js" defer></script>
-<script src="/js/vendor/supabase.js"></script>
+<script src="/js/vendor/supabase.js" defer></script>
 </head>
 <body class="min-h-screen">
 
 <header class="sticky top-0 z-30 backdrop-blur border-b" style="background:color-mix(in srgb, var(--bg) 88%, transparent); border-color:var(--border);">
   <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
     <a href="/" class="flex items-center gap-2 shrink-0">
-      <img src="/assets/icons/icon-192.png" alt="" class="w-9 h-9 rounded-lg" />
+      <img src="/assets/icons/icon-192.png" alt="" width="36" height="36" class="w-9 h-9 rounded-lg" />
       <span class="font-display font-bold text-lg hidden sm:block">Nineteen J Store</span>
     </a>
 
@@ -63,7 +73,16 @@
   </section>
 
   <section class="mt-6">
-    <div id="apps-grid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    <div id="apps-grid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"><!-- SEO:APPS-LIST:START -->
+<a href="/apps/alloco-crush-c15r" class="app-card p-4 flex gap-4 items-center group">
+  <div class="icon-frame w-16 h-16"><img src="https://rrlayjervibobxiucbuu.supabase.co/storage/v1/object/public/app-icons/929dab28-36f0-4555-9e13-2146c198e5d7.png" alt="" width="64" height="64" class="w-full h-full object-cover" loading="lazy" /></div>
+  <div class="min-w-0 flex-1"><h2 class="font-display font-semibold truncate">Alloco Crush</h2>
+  <p class="text-sm text-[var(--muted)] truncate">Jeux · Android</p></div></a>
+<a href="/apps/omnistudent-a3vh" class="app-card p-4 flex gap-4 items-center group">
+  <div class="icon-frame w-16 h-16"><img src="https://rrlayjervibobxiucbuu.supabase.co/storage/v1/object/public/app-icons/f104de71-4bda-41be-a244-9d4b8dd7fb3b.png" alt="" width="64" height="64" class="w-full h-full object-cover" loading="lazy" /></div>
+  <div class="min-w-0 flex-1"><h2 class="font-display font-semibold truncate">OmniStudent</h2>
+  <p class="text-sm text-[var(--muted)] truncate">Éducation · Android</p></div></a>
+<!-- SEO:APPS-LIST:END --></div>
     <p id="empty-state" class="hidden text-center text-[var(--muted)] py-16">Aucune application ne correspond à ta recherche.</p>
   </section>
 
@@ -74,7 +93,7 @@
 </footer>
 
 <div id="install-banner" class="install-banner hidden fixed bottom-4 inset-x-4 sm:inset-x-auto sm:right-4 sm:w-96 surface rounded-xl p-4 shadow-2xl z-40 flex items-center gap-3">
-  <img src="/assets/icons/icon-192.png" alt="" class="w-10 h-10 rounded-lg" />
+  <img src="/assets/icons/icon-192.png" alt="" width="40" height="40" class="w-10 h-10 rounded-lg" />
   <div class="flex-1 text-sm">
     <p class="font-medium">Installer le Store</p>
     <p class="text-[var(--muted)] text-xs">Accès rapide, même hors ligne.</p>

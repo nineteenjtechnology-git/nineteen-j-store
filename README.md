@@ -246,3 +246,11 @@ enregistré en base → 404. Corrigé en désactivant la reprise inter-session
 (`upload.start()` direct, `storeFingerprintForResuming: false`) ; la résilience
 réseau reste assurée par les tentatives automatiques (`retryDelays`) au sein d'un
 même upload en cours.
+
+## SEO (référencement)
+
+- **Fiches d'apps** : URL canonique `/apps/<slug>` (pré-rendue au build : title, description, canonical, Open Graph, JSON-LD, texte). L'ancien format `/app/detail?slug=…` continue de fonctionner (noindex).
+- **Génération** : `npm run build:seo` lit les apps *publiées* dans Supabase (clé publishable, lecture seule, aucun secret) et écrit `public/apps/*.html`, `public/sitemap.xml` et la liste d'apps de `public/index.html` (entre les marqueurs `SEO:APPS-LIST`). Ces sorties sont ignorées par git (sauf le bloc de l'accueil, régénéré à chaque build).
+- **Déploiement** : `npm run deploy` (build CSS + SEO + `firebase deploy --only hosting`). La CI relance aussi le pré-rendu chaque nuit et sur `workflow_dispatch` : après avoir publié une app dans l'admin, lancer le workflow (ou attendre la nuit) pour que sa fiche soit indexable. En attendant, `/apps/<slug>` fonctionne quand même (repli interactif, noindex).
+- **Domaine** : `SITE_URL` (défaut `https://nineteen-j-store.web.app`) alimente canonical, sitemap et JSON-LD. Si tu ajoutes un domaine personnalisé : lancer le build avec `SITE_URL=https://ton-domaine`, mettre à jour `public/robots.txt` et `public/index.html` (canonical, og:url, JSON-LD), et ajouter une redirection 301 depuis l'ancien domaine.
+- **Contenu mince** : une fiche de moins de 20 mots reste générée (aperçu WhatsApp correct) mais en `noindex` et hors sitemap. Rédiger une vraie description (2–3 phrases utiles) pour qu'elle soit indexée.
