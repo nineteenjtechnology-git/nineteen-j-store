@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:        # relancer à la main (ex. après avoir publié une app dans l'admin)
+  schedule:
+    - cron: '17 3 * * *'    # chaque nuit : régénère les fiches SEO + sitemap depuis Supabase
 
 # Principe du moindre privilège : le workflow ne peut que lire le dépôt.
 permissions:
@@ -40,7 +43,7 @@ jobs:
 
   deploy:
     needs: verify
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: production   # permet d'exiger une approbation manuelle (Settings > Environments)
     steps:
@@ -51,6 +54,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build:css
+
+      # Pré-rendu SEO : fiches /apps/<slug>, sitemap.xml, liste d'apps de l'accueil (lecture publique Supabase, aucun secret).
+      - name: Pré-rendu SEO
+        run: npm run build:seo
 
       # Compte de service au rôle minimal (Firebase Hosting Admin) au lieu d'un
       # jeton personnel longue durée (`firebase login:ci`, déprécié).
@@ -65,3 +72,11 @@ jobs:
           sleep 8
           curl -sSf "${{ secrets.HOSTING_URL }}" -o /dev/null \
             || (echo "Health check échoué - envisager un rollback (voir README)" && exit 1)
+
+      - name: Contrôles SEO post-déploiement
+        run: |
+          base="${{ secrets.HOSTING_URL }}"
+          curl -sSf "$base/robots.txt" | grep -q "Sitemap:" || (echo "robots.txt sans Sitemap" && exit 1)
+          curl -sSf "$base/sitemap.xml" | grep -q "<urlset" || (echo "sitemap.xml invalide" && exit 1)
+          code=$(curl -s -o /dev/null -w "%{http_code}" "$base/page-qui-nexiste-pas-$RANDOM")
+          [ "$code" = "404" ] || (echo "Une URL inconnue doit répondre 404 (reçu $code)" && exit 1)

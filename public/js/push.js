@@ -87,6 +87,13 @@ export async function syncPush() {
   }
 }
 
+// Message lisible pour une erreur d'activation des notifications (utilisé par la cloche et par la page de détail).
+export function describePushError(err) {
+  return err?.message === 'push-not-configured'
+    ? 'Les notifications ne sont pas encore disponibles. Réessaie bientôt.'
+    : "Impossible d'activer les notifications pour le moment.";
+}
+
 function notify(message) {
   const el = document.createElement('div');
   el.setAttribute('role', 'status');
@@ -134,9 +141,7 @@ export async function initPushButton() {
       }
     } catch (err) {
       console.error('Notifications :', err);
-      notify(err?.message === 'push-not-configured'
-        ? 'Les notifications ne sont pas encore disponibles. Réessaie bientôt.'
-        : "Impossible d'activer les notifications pour le moment.");
+      notify(describePushError(err));
     } finally {
       btn.disabled = false;
       refresh();

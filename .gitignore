@@ -5,3 +5,6 @@ functions/.env
 functions/.env.*
 .DS_Store
 *.local
+# Généré par scripts/prerender.mjs (npm run build:seo)
+public/apps/
+public/sitemap.xml
